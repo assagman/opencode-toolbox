@@ -207,11 +207,14 @@ Returns a comprehensive status object:
 
 ### /toolbox-status Slash Command
 
-The plugin automatically creates a `/toolbox-status` slash command on first launch:
+The plugin automatically creates and maintains a `/toolbox-status` slash command:
 
 ```
 ~/.config/opencode/command/toolbox-status.md
 ```
+
+- **Auto-created** on first plugin launch
+- **Auto-updated** when plugin version changes (tracked via `toolbox_version` in frontmatter)
 
 Use it in OpenCode by typing `/toolbox-status` to get a formatted status report.
 
