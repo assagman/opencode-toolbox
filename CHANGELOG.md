@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-01-08
+
+### Changed
+- Updated README and ARCHITECTURE docs to reflect three-tool structure (`toolbox_search_bm25`, `toolbox_search_regex`, `toolbox_execute`)
+- Removed outdated installation instructions (no `bun add` required)
+- Fixed parameter names in documentation (`arguments` instead of `toolArgs`)
+
 ## [0.3.0] - 2026-01-08
 
 ### Added
