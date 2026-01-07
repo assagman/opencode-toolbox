@@ -1,0 +1,45 @@
+{
+  "name": "opencode-toolbox",
+  "version": "0.2.0",
+  "description": "Tool Search Tool Plugin for OpenCode - search and execute tools from MCP servers on-demand",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "dev": "bun --hot src/index.ts",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tool-search",
+    "mcp"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@opencode-ai/plugin": "latest",
+    "jsonc-parser": "^3.3.1",
+    "zod": "^4.3.5"
+  }
+}
