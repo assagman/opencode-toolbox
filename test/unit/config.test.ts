@@ -4,7 +4,7 @@ import type { Config } from "../../src/config";
 
 test("valid config loads correctly", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "gmail": {
         "type": "local",
         "command": ["npx", "-y", "@anthropic/mcp-gmail"]
@@ -16,8 +16,8 @@ test("valid config loads correctly", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    expect(result.data.servers).toHaveProperty("gmail");
-    const gmail = result.data.servers.gmail as any;
+    expect(result.data.mcp).toHaveProperty("gmail");
+    const gmail = result.data.mcp.gmail as any;
     expect(gmail.type).toBe("local");
     expect(gmail.command).toEqual(["npx", "-y", "@anthropic/mcp-gmail"]);
   }
@@ -25,7 +25,7 @@ test("valid config loads correctly", () => {
 
 test("config with remote server", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "weather": {
         "type": "remote",
         "url": "https://mcp.example.com/weather"
@@ -37,7 +37,7 @@ test("config with remote server", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    const weather = result.data.servers.weather as any;
+    const weather = result.data.mcp.weather as any;
     expect(weather.type).toBe("remote");
     expect(weather.url).toBe("https://mcp.example.com/weather");
   }
@@ -45,7 +45,7 @@ test("config with remote server", () => {
 
 test("config with settings", () => {
   const jsonc = `{
-    "servers": {},
+    "mcp": {},
     "settings": {
       "defaultLimit": 10
     }
@@ -62,7 +62,7 @@ test("config with settings", () => {
 
 test("invalid server type returns error", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "invalid": {
         "type": "invalid_type"
       }
@@ -75,7 +75,7 @@ test("invalid server type returns error", () => {
 
 test("local server without command returns error", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "gmail": {
         "type": "local"
       }
@@ -88,7 +88,7 @@ test("local server without command returns error", () => {
 
 test("remote server without url returns error", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "weather": {
         "type": "remote"
       }
@@ -101,7 +101,7 @@ test("remote server without url returns error", () => {
 
 test("env interpolation works", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "gmail": {
         "type": "local",
         "command": ["npx", "@anthropic/mcp-gmail"],
@@ -119,7 +119,7 @@ test("env interpolation works", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    const gmail = result.data.servers.gmail as any;
+    const gmail = result.data.mcp.gmail as any;
     expect(gmail.environment?.GMAIL_CREDENTIALS).toBe("test-credentials");
   }
 
@@ -128,7 +128,7 @@ test("env interpolation works", () => {
 
 test("missing env var keeps placeholder", () => {
   const jsonc = `{
-    "servers": {
+    "mcp": {
       "github": {
         "type": "local",
         "command": ["npx", "@anthropic/mcp-github"],
@@ -143,7 +143,7 @@ test("missing env var keeps placeholder", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    const github = result.data.servers.github as any;
+    const github = result.data.mcp.github as any;
     // If env var doesn't exist, it should keep the placeholder or handle gracefully
     expect(github.environment?.GITHUB_TOKEN).toBe("");
   }
@@ -152,7 +152,7 @@ test("missing env var keeps placeholder", () => {
 test("jsonc comments are ignored", () => {
   const jsonc = `{
     // This is a comment
-    "servers": {
+    "mcp": {
       "gmail": {
         "type": "local", // inline comment
         "command": ["npx", "@anthropic/mcp-gmail"]
@@ -169,14 +169,14 @@ test("jsonc comments are ignored", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    expect(result.data.servers).toHaveProperty("gmail");
+    expect(result.data.mcp).toHaveProperty("gmail");
     expect(result.data.settings?.defaultLimit).toBe(5);
   }
 });
 
 test("empty config is invalid (needs at least one server)", () => {
   const jsonc = `{
-    "servers": {}
+    "mcp": {}
   }`;
 
   const result = parseConfig(jsonc);
@@ -184,6 +184,6 @@ test("empty config is invalid (needs at least one server)", () => {
   expect(result.success).toBe(true);
 
   if (result.success) {
-    expect(Object.keys(result.data.servers)).toHaveLength(0);
+    expect(Object.keys(result.data.mcp)).toHaveLength(0);
   }
 });

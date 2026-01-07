@@ -33,35 +33,35 @@ describe("ToolboxPlugin", () => {
     // Create a temp config file
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
-    
+
     expect(hooks.tool).toBeDefined();
     expect(hooks.tool?.toolbox_search_bm25).toBeDefined();
     expect(hooks.tool?.toolbox_search_regex).toBeDefined();
     expect(hooks.tool?.toolbox_execute).toBeDefined();
-    
+
     delete process.env.OPENCODE_TOOLBOX_CONFIG;
   });
 });
 
 describe("toolbox_search_bm25 schema", () => {
   let bm25Tool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     bm25Tool = hooks.tool?.toolbox_search_bm25;
   });
@@ -82,16 +82,16 @@ describe("toolbox_search_bm25 schema", () => {
 
 describe("toolbox_search_regex schema", () => {
   let regexTool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     regexTool = hooks.tool?.toolbox_search_regex;
   });
@@ -112,16 +112,16 @@ describe("toolbox_search_regex schema", () => {
 
 describe("toolbox_execute schema", () => {
   let executeTool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     executeTool = hooks.tool?.toolbox_execute;
   });
@@ -142,16 +142,16 @@ describe("toolbox_execute schema", () => {
 
 describe("toolbox_search_bm25 execute", () => {
   let bm25Tool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     bm25Tool = hooks.tool?.toolbox_search_bm25;
   });
@@ -174,16 +174,16 @@ describe("toolbox_search_bm25 execute", () => {
 
 describe("toolbox_search_regex execute", () => {
   let regexTool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     regexTool = hooks.tool?.toolbox_search_regex;
   });
@@ -208,16 +208,16 @@ describe("toolbox_search_regex execute", () => {
 
 describe("toolbox_execute execute", () => {
   let executeTool: any;
-  
+
   beforeEach(async () => {
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
-      servers: {},
+      mcp: {},
       settings: { defaultLimit: 5 }
     }));
-    
+
     process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
-    
+
     const hooks = await ToolboxPlugin(createMockPluginInput());
     executeTool = hooks.tool?.toolbox_execute;
   });

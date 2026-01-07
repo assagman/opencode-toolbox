@@ -1,5 +1,5 @@
 {
-  "servers": {
+  "mcp": {
     "gmail": {
       "type": "local",
       "command": ["npx", "-y", "@anthropic/mcp-gmail"],

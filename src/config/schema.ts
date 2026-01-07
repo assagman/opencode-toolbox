@@ -39,7 +39,7 @@ export const SettingsConfigSchema = z.object({
  */
 export const ConfigSchema = z.object({
   /** MCP servers to connect to */
-  servers: z.record(z.string(), ServerConfigSchema),
+  mcp: z.record(z.string(), ServerConfigSchema),
   /** Plugin settings */
   settings: SettingsConfigSchema.optional(),
 });

@@ -151,7 +151,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
     if (initialized) return;
 
     try {
-      await mcpManager.initialize(config.servers);
+      await mcpManager.initialize(config.mcp);
       const allTools = mcpManager.getAllCatalogTools();
       bm25Index.indexTools(allTools);
       initialized = true;

@@ -30,7 +30,7 @@ Create `~/.config/opencode/toolbox.jsonc`:
 
 ```jsonc
 {
-  "servers": {
+  "mcp": {
     "time": {
       "type": "local",
       "command": ["npx", "-y", "@anthropic/mcp-time"]

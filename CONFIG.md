@@ -12,7 +12,7 @@
 2. Create Toolbox config (`~/.config/opencode/toolbox.jsonc`):
 ```jsonc
 {
-  "servers": {
+  "mcp": {
     "time": {
       "type": "local",
       "command": ["npx", "-y", "@anthropic/mcp-time"]
@@ -30,8 +30,8 @@
 
 ```jsonc
 {
-  // Servers to manage (required)
-  "servers": {
+  // MCP servers to manage (required)
+  "mcp": {
     // Local MCP server (stdio)
     "gmail": {
       "type": "local",
@@ -40,7 +40,7 @@
         "GMAIL_CREDENTIALS": "{env:GMAIL_CREDENTIALS}"
       }
     },
-    
+
     // Remote MCP server (SSE)
     "weather": {
       "type": "remote",
@@ -50,7 +50,7 @@
       }
     }
   },
-  
+
   // Optional settings
   "settings": {
     "defaultLimit": 5  // Default number of search results (1-20)
@@ -66,7 +66,7 @@ Runs MCP server as a child process via stdio:
 
 ```jsonc
 {
-  "servers": {
+  "mcp": {
     "my-server": {
       "type": "local",
       "command": ["npx", "-y", "@anthropic/mcp-server"],
@@ -84,7 +84,7 @@ Connects to MCP server via HTTP/SSE:
 
 ```jsonc
 {
-  "servers": {
+  "mcp": {
     "my-remote": {
       "type": "remote",
       "url": "https://mcp.example.com/sse",
@@ -102,7 +102,7 @@ Use `{env:VAR_NAME}` pattern to reference environment variables:
 
 ```jsonc
 {
-  "servers": {
+  "mcp": {
     "github": {
       "type": "local",
       "command": ["npx", "@anthropic/mcp-github"],
@@ -124,21 +124,21 @@ If the environment variable doesn't exist, it will be replaced with an empty str
 
 ## Common Mistakes
 
-### Wrong: Using "mcp" key
+### Wrong: Using "servers" key
 
 ```jsonc
 // Wrong - will cause errors
 {
-  "mcp": {
+  "servers": {
     "time": { ... }
   }
 }
 ```
 
 ```jsonc
-// Correct - use "servers"
+// Correct - use "mcp"
 {
-  "servers": {
+  "mcp": {
     "time": { ... }
   }
 }
@@ -149,7 +149,7 @@ If the environment variable doesn't exist, it will be replaced with an empty str
 ```jsonc
 // Wrong - trailing comma in arrays breaks some parsers
 {
-  "servers": {
+  "mcp": {
     "time": {
       "type": "local",
       "command": ["npx", "-y", "@anthropic/mcp-time",]  // <-- trailing comma
