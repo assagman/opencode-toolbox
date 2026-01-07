@@ -72,18 +72,48 @@ Pass arguments as JSON string matching the tool's schema.`;
 /**
  * System prompt injection - concise instructions for tool search
  */
-const SYSTEM_PROMPT = `# Extended Toolbox
+const SYSTEM_PROMPT_BASE = `# Extended Toolbox
 
 You have access to an extended toolbox with additional capabilities (web search, time utilities, code search, etc.).
 
-## Rules
-1. ALWAYS toolbox_search_* before saying "I cannot do that" or "I don't have access to."
-2. ALWAYS toolbox_search_* if you think that user wants you to use some tools
-3. ALWAYS toolbox_search_* if you think that user may refer specific tool name which is not exist in the context
+## Rule
+ALWAYS search before saying "I cannot do that" or "I don't have access to."
 
 ## Workflow
 1. Search: toolbox_search_bm25({ text: "what you need" }) or toolbox_search_regex({ pattern: "prefix_.*" })
 2. Execute: toolbox_execute({ name: "tool_name", arguments: '{"key": "value"}' })`;
+
+/**
+ * Generate system prompt with registered MCP servers and their tools
+ * Uses JSON schema format with full tool names (serverName_toolName)
+ */
+function generateSystemPrompt(mcpManager: MCPManager): string {
+  const servers = mcpManager.getAllServers();
+  
+  if (servers.length === 0) {
+    return SYSTEM_PROMPT_BASE;
+  }
+
+  const toolboxSchema: Record<string, string[]> = {};
+  
+  for (const server of servers) {
+    if (server.status === "connected" && server.tools.length > 0) {
+      toolboxSchema[server.name] = server.tools.map(t => t.idString);
+    }
+  }
+
+  if (Object.keys(toolboxSchema).length === 0) {
+    return SYSTEM_PROMPT_BASE;
+  }
+
+  return `${SYSTEM_PROMPT_BASE}
+
+## Toolbox Schema
+Tool names use \`<server>_<tool>\` format. Pass exact names to toolbox_execute().
+\`\`\`json
+${JSON.stringify(toolboxSchema, null, 2)}
+\`\`\``;
+}
 
 /**
  * Toolbox Plugin - Tool Search Tool for OpenCode
@@ -290,7 +320,13 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
     // Inject system prompt with tool search instructions
     "experimental.chat.system.transform": async (_input, output) => {
-      output.system.push(SYSTEM_PROMPT);
+      try {
+        await ensureInitialized();
+        output.system.push(generateSystemPrompt(mcpManager));
+      } catch {
+        // If initialization fails, use base prompt without server listing
+        output.system.push(SYSTEM_PROMPT_BASE);
+      }
     },
   };
 };
