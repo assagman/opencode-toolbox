@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-01-08
+
+### Added
+- **Observability**: Comprehensive logging to OpenCode's log system
+- **Status Tool**: New `toolbox_status` command for checking plugin and server health
+- **Health Metrics**: Track search count, execution count, and success rate
+- **Server Connection Tracking**: Log MCP server initialization and connection status
+- **Error Logging**: Detailed error messages for failed operations
+- **Status Indicators**: Connection ratio (e.g., "2/3") to highlight failures
+
+### Changed
+- Updated README with observability section and logging documentation
+- Added troubleshooting guidance using `toolbox_status` and logs
+
 ## [0.4.0] - 2026-01-08
 
 ### Breaking Changes

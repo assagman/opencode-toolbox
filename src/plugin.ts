@@ -1,11 +1,14 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import { appendFile, mkdir } from "fs/promises";
 import { loadConfig } from "./config";
 import { MCPManager } from "./mcp-client";
 import { BM25Index, searchWithRegex, MAX_REGEX_LENGTH } from "./search";
 import type { CatalogTool, SearchResult } from "./catalog";
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME}/.config/opencode/toolbox.jsonc`;
+const LOG_FILE_PATH = `${process.env.HOME}/.local/share/opencode/toolbox.log`;
+const LOG_DIR = `${process.env.HOME}/.local/share/opencode`;
 
 /**
  * Parse tool name into server and original tool name
@@ -69,6 +72,27 @@ const EXECUTE_DESC = `Execute a tool discovered via toolbox_search_bm25 or toolb
 
 Pass arguments as JSON string matching the tool's schema.`;
 
+const STATUS_DESC = `Get toolbox status including plugin initialization, MCP server connections, and tool counts.
+
+Shows success/total metrics to highlight failures. Use to check if toolbox is working correctly.`;
+
+/**
+ * Safe logging helper - writes to ~/.local/share/opencode/toolbox.log
+ * Never blocks or throws
+ */
+function log(level: string, message: string, extra?: any) {
+  const timestamp = new Date().toISOString();
+  const extraStr = extra ? ` ${JSON.stringify(extra)}` : "";
+  const line = `${timestamp} [${level.toUpperCase()}] ${message}${extraStr}\n`;
+
+  // Fire and forget - never block
+  mkdir(LOG_DIR, { recursive: true })
+    .then(() => appendFile(LOG_FILE_PATH, line))
+    .catch(() => {
+      // Ignore errors - never block
+    });
+}
+
 /**
  * System prompt injection - concise instructions for tool search
  */
@@ -78,6 +102,8 @@ You have access to an extended toolbox with additional capabilities (web search,
 
 ## Rule
 ALWAYS search before saying "I cannot do that" or "I don't have access to."
+DO NOT try to execute a tool without having the tool's exact tool schema. If you don't have the tool's schema
+  then run toolbox_search_* to get them.
 
 ## Workflow
 1. Search: toolbox_search_bm25({ text: "what you need" }) or toolbox_search_regex({ pattern: "prefix_.*" })
@@ -89,16 +115,16 @@ ALWAYS search before saying "I cannot do that" or "I don't have access to."
  */
 function generateSystemPrompt(mcpManager: MCPManager): string {
   const servers = mcpManager.getAllServers();
-  
+
   if (servers.length === 0) {
     return SYSTEM_PROMPT_BASE;
   }
 
   const toolboxSchema: Record<string, string[]> = {};
-  
+
   for (const server of servers) {
     if (server.status === "connected" && server.tools.length > 0) {
-      toolboxSchema[server.name] = server.tools.map(t => t.idString);
+      toolboxSchema[server.name] = server.tools.map((t) => t.idString);
     }
   }
 
@@ -118,21 +144,23 @@ ${JSON.stringify(toolboxSchema, null, 2)}
 /**
  * Toolbox Plugin - Tool Search Tool for OpenCode
  *
- * Provides on-demand access to MCP server tools through three tools:
+ * Provides on-demand access to MCP server tools through four tools:
  * - toolbox_search_bm25: Natural language search
  * - toolbox_search_regex: Pattern-based search
  * - toolbox_execute: Execute discovered tools
+ * - toolbox_status: Get plugin and server status
  */
 export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
+  const { client } = ctx;
+
   // Load configuration
   const configPath = process.env.OPENCODE_TOOLBOX_CONFIG || DEFAULT_CONFIG_PATH;
   const configResult = await loadConfig(configPath);
 
   if (!configResult.success) {
-    console.error(
-      "[Toolbox] Failed to load config:",
-      configResult.error.issues,
-    );
+    const errorMsg = `Failed to load config from ${configPath}: ${configResult.error.issues.map((i) => i.message).join(", ")}`;
+    // Log to file only - don't block
+    log("error", errorMsg);
     // Return empty hooks if config fails - plugin disabled
     return {};
   }
@@ -144,6 +172,19 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
   const bm25Index = new BM25Index();
   let initialized = false;
 
+  // Track metrics
+  let searchCount = 0;
+  let executionCount = 0;
+  let executionSuccessCount = 0;
+
+  // Log successful config load - non-blocking, file only
+  const serverNames = Object.keys(config.mcp);
+  log("info", `Toolbox plugin loaded successfully`, {
+    configPath,
+    serverCount: serverNames.length,
+    servers: serverNames,
+  });
+
   /**
    * Lazy initialization - connect to MCP servers on first use
    */
@@ -151,12 +192,38 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
     if (initialized) return;
 
     try {
+      log("info", "Initializing MCP servers...");
+
       await mcpManager.initialize(config.mcp);
       const allTools = mcpManager.getAllCatalogTools();
       bm25Index.indexTools(allTools);
       initialized = true;
+
+      const servers = mcpManager.getAllServers();
+      const connectedServers = servers.filter((s) => s.status === "connected");
+      const failedServers = servers.filter((s) => s.status === "error");
+
+      const initMsg = `Initialization complete: ${connectedServers.length}/${servers.length} servers connected, ${allTools.length} tools indexed`;
+      log("info", initMsg, {
+        totalServers: servers.length,
+        connectedServers: connectedServers.length,
+        failedServers: failedServers.length,
+        totalTools: allTools.length,
+        servers: servers.map((s) => ({
+          name: s.name,
+          status: s.status,
+          toolCount: s.tools.length,
+          error: s.error || null,
+        })),
+      });
+
+      if (failedServers.length > 0) {
+        const warnMsg = `${failedServers.length} server(s) failed to connect: ${failedServers.map((s) => s.name).join(", ")}`;
+        log("warn", warnMsg);
+      }
     } catch (error) {
-      console.error("[Toolbox] Failed to initialize MCP servers:", error);
+      const errorMsg = `Failed to initialize MCP servers: ${error instanceof Error ? error.message : String(error)}`;
+      log("error", errorMsg);
       throw error;
     }
   }
@@ -192,9 +259,22 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             });
           }
 
+          searchCount++;
           const searchLimit = args.limit || config.settings?.defaultLimit || 5;
           const allTools = mcpManager.getAllCatalogTools();
           const results = bm25Index.search(args.text, searchLimit);
+
+          log(
+            "info",
+            `BM25 search completed: "${args.text}" -> ${results.length} results`,
+            {
+              searchType: "bm25",
+              query: args.text,
+              resultsCount: results.length,
+              limit: searchLimit,
+            },
+          );
+
           return formatSearchResults(results, allTools);
         },
       }),
@@ -228,16 +308,32 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             });
           }
 
+          searchCount++;
           const searchLimit = args.limit || config.settings?.defaultLimit || 5;
           const allTools = mcpManager.getAllCatalogTools();
           const result = searchWithRegex(allTools, args.pattern, searchLimit);
 
           if ("error" in result) {
+            log(
+              "warn",
+              `Regex search failed: "${args.pattern}" -> ${result.error}`,
+            );
             return JSON.stringify({
               success: false,
               error: result.error,
             });
           }
+
+          log(
+            "info",
+            `Regex search completed: "${args.pattern}" -> ${result.length} results`,
+            {
+              searchType: "regex",
+              pattern: args.pattern,
+              resultsCount: result.length,
+              limit: searchLimit,
+            },
+          );
 
           return formatSearchResults(result, allTools);
         },
@@ -277,6 +373,9 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           // Parse tool name to get server and original tool name
           const parsed = parseToolName(args.name);
           if (!parsed) {
+            log("warn", `Invalid tool name format: ${args.name}`, {
+              toolName: args.name,
+            });
             return JSON.stringify({
               success: false,
               error: `Invalid tool name format: ${args.name}. Expected format: serverName_toolName (e.g., 'time_get_current_time')`,
@@ -289,6 +388,14 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             try {
               toolArgs = JSON.parse(args.arguments);
             } catch (error) {
+              log(
+                "warn",
+                `Failed to parse arguments as JSON for ${args.name}`,
+                {
+                  toolName: args.name,
+                  arguments: args.arguments,
+                },
+              );
               return JSON.stringify({
                 success: false,
                 error: `Failed to parse arguments as JSON: ${error instanceof Error ? error.message : String(error)}`,
@@ -296,24 +403,138 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             }
           }
 
+          executionCount++;
+
           // Call the underlying MCP server
           try {
+            const startTime = Date.now();
             const result = await mcpManager.callTool(
               parsed.serverName,
               parsed.toolName,
               toolArgs,
             );
+            const duration = Date.now() - startTime;
+            executionSuccessCount++;
+
+            log("info", `Tool executed successfully: ${args.name}`, {
+              server: parsed.serverName,
+              tool: parsed.toolName,
+              durationMs: duration,
+            });
 
             return JSON.stringify({
               success: true,
               result,
             });
           } catch (error) {
+            const errorMsg = `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`;
+            log("error", errorMsg, {
+              server: parsed.serverName,
+              tool: parsed.toolName,
+              error: errorMsg,
+            });
             return JSON.stringify({
               success: false,
-              error: `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
+              error: errorMsg,
             });
           }
+        },
+      }),
+
+      /**
+       * Status Tool
+       * Get toolbox status and health information
+       */
+      toolbox_status: tool({
+        description: STATUS_DESC,
+
+        args: {},
+
+        async execute() {
+          // Initialize if not already done
+          if (!initialized) {
+            try {
+              await ensureInitialized();
+            } catch (error) {
+              return JSON.stringify({
+                status: "error",
+                message: "Failed to initialize toolbox",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+
+          const servers = mcpManager.getAllServers();
+          const connectedServers = servers.filter(
+            (s) => s.status === "connected",
+          );
+          const failedServers = servers.filter((s) => s.status === "error");
+          const connectingServers = servers.filter(
+            (s) => s.status === "connecting",
+          );
+          const totalTools = mcpManager.getAllCatalogTools().length;
+
+          const status = {
+            plugin: {
+              initialized: true,
+              configPath,
+              uptime: process.uptime(),
+              searches: searchCount,
+              executions: executionCount,
+              successRate:
+                executionCount > 0
+                  ? `${Math.round((executionSuccessCount / executionCount) * 100)}%`
+                  : "N/A",
+            },
+            servers: {
+              total: servers.length,
+              connected: connectedServers.length,
+              failed: failedServers.length,
+              connecting: connectingServers.length,
+              connectionRatio: `${connectedServers.length}/${servers.length}`,
+              details: servers.map((server) => ({
+                name: server.name,
+                status: server.status,
+                type: server.config.type,
+                toolCount: server.tools.length,
+                error: server.error || null,
+                healthy: server.status === "connected",
+              })),
+            },
+            tools: {
+              total: totalTools,
+              available: totalTools, // Only connected servers contribute to available tools
+              serversWithTools: servers.filter((s) => s.tools.length > 0)
+                .length,
+            },
+            health: {
+              status:
+                failedServers.length === 0 && servers.length > 0
+                  ? "healthy"
+                  : failedServers.length > 0
+                    ? "degraded"
+                    : "unknown",
+              message:
+                servers.length === 0
+                  ? "No servers configured"
+                  : failedServers.length === 0
+                    ? "All servers connected"
+                    : `${failedServers.length} server(s) failed to connect`,
+            },
+          };
+
+          // Log status request - non-blocking
+          log(
+            "info",
+            `Status requested: ${connectedServers.length}/${servers.length} servers connected`,
+            {
+              connectedServers: connectedServers.length,
+              totalServers: servers.length,
+              totalTools: totalTools,
+            },
+          );
+
+          return JSON.stringify(status, null, 2);
         },
       }),
     },

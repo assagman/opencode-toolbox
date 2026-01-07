@@ -4,7 +4,13 @@ import type { PluginInput } from "@opencode-ai/plugin";
 
 // Mock plugin input
 const createMockPluginInput = (): PluginInput => ({
-  client: {} as any,
+  client: {
+    app: {
+      log: async (logData: any) => {
+        // Mock logging - do nothing in tests
+      },
+    },
+  } as any,
   project: {} as any,
   directory: "/test/dir",
   worktree: "/test/dir",
