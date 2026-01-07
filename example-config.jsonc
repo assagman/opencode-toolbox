@@ -1,0 +1,22 @@
+{
+  "servers": {
+    "gmail": {
+      "type": "local",
+      "command": ["npx", "-y", "@anthropic/mcp-gmail"],
+      "environment": {
+        "GMAIL_CREDENTIALS": "{env:GMAIL_CREDENTIALS}"
+      }
+    },
+    "github": {
+      "type": "local",
+      "command": ["npx", "-y", "@anthropic/mcp-github"],
+      "environment": {
+        "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
+      }
+    }
+  },
+  "settings": {
+    "defaultLimit": 5,
+    "maxActivatedTools": 50
+  }
+}
