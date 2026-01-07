@@ -2,7 +2,7 @@
 
 ## Overview
 
-Toolbox (Tool Search Tool) is an OpenCode plugin that implements the "tool search tool" pattern. It reduces LLM context bloat by exposing a single `toolbox` tool that provides on-demand access to a catalog of MCP server tools.
+Toolbox (Tool Search Tool) is an OpenCode plugin that implements the "tool search tool" pattern. It reduces LLM context bloat by exposing a few toolbox tools (`toolbox_search_bm25`, `toolbox_search_regex`, `toolbox_execute`) that provide on-demand access to a catalog of MCP server tools.
 
 ## Tool Registration Architecture
 
@@ -14,8 +14,8 @@ Toolbox (Tool Search Tool) is an OpenCode plugin that implements the "tool searc
 │  │  Built-in Tools  │   │  MCP Server Tools │   │   Plugin Tools   │     │
 │  │                  │   │                   │   │                  │     │
 │  │  • read          │   │  • time_*         │   │  • supermemory   │     │
-│  │  • bash          │   │  • exa_*          │   │  • toolbox (ours)│     │
-│  │  • edit          │   │  • brave_*        │   │                  │     │
+│  │  • bash          │   │  • exa_*          │   │  • toolbox_*     │     │
+│  │  • edit          │   │  • brave_*        │   │    (ours)        │     │
 │  │  • write         │   │  • context7_*     │   │                  │     │
 │  │  • glob          │   │                   │   │                  │     │
 │  │  • grep          │   │                   │   │                  │     │
@@ -63,11 +63,19 @@ With Toolbox plugin, LLM sees only essential tools:
   "tools": [
     { "name": "read", "description": "Read a file...", "parameters": {...} },
     { "name": "bash", "description": "Execute command...", "parameters": {...} },
-    { "name": "toolbox", "description": "Search and execute tools...", "parameters": {
-        "action": { "enum": ["search", "execute"] },
-        "query": { "type": "string" },
-        "toolName": { "type": "string" },
-        "toolArgs": { "type": "string" }
+    { "name": "toolbox_search_bm25", "description": "Search toolbox by natural language", "parameters": {
+        "text": { "type": "string" },
+        "limit": { "type": "number" }
+      }
+    },
+    { "name": "toolbox_search_regex", "description": "Search toolbox by regex pattern", "parameters": {
+        "pattern": { "type": "string" },
+        "limit": { "type": "number" }
+      }
+    },
+    { "name": "toolbox_execute", "description": "Execute a discovered tool", "parameters": {
+        "name": { "type": "string" },
+        "arguments": { "type": "string" }
       }
     }
   ]
@@ -102,7 +110,7 @@ With Toolbox plugin, LLM sees only essential tools:
                     │ 2. Connect to configured MCP servers  │
                     │ 3. Fetch all tools from each server   │
                     │ 4. Build internal catalog             │
-                    │ 5. Return { tool: { toolbox: ... } }  │
+                    │ 5. Return 3 toolbox tools             │
                     └───────────────────────────────────────┘
                               │
                               ▼
@@ -116,7 +124,9 @@ With Toolbox plugin, LLM sees only essential tools:
                     │  • glob                               │
                     │  • grep                               │
                     │  • task                               │
-                    │  • toolbox  ◄── OUR PLUGIN TOOL       │
+                    │  • toolbox_search_bm25  ◄── PLUGIN    │
+                    │  • toolbox_search_regex ◄── PLUGIN    │
+                    │  • toolbox_execute      ◄── PLUGIN    │
                     │                                       │
                     │  (NO time_*, exa_*, brave_* etc.)     │
                     └───────────────────────────────────────┘
@@ -133,12 +143,11 @@ With Toolbox plugin, LLM sees only essential tools:
     │────────────────────────────►│                              │
     │                             │                              │
     │                             │ Hmm, I need time info.       │
-    │                             │ I have 'toolbox' tool.       │
+    │                             │ I have toolbox_search tools. │
     │                             │ Let me search for time tools │
     │                             │                              │
-    │                             │ toolbox({                    │
-    │                             │   action: "search",          │
-    │                             │   query: "time timezone"     │
+    │                             │ toolbox_search_bm25({        │
+    │                             │   text: "time timezone"      │
     │                             │ })                           │
     │                             │─────────────────────────────►│
     │                             │                              │
@@ -163,14 +172,13 @@ With Toolbox plugin, LLM sees only essential tools:
     │                             │ timezone is a string,        │
     │                             │ Tokyo = "Asia/Tokyo"         │
     │                             │                              │
-    │                             │ toolbox({                    │
-    │                             │   action: "execute",         │
-    │                             │   toolName: "time_get_current_time",
-    │                             │   toolArgs: '{"timezone":"Asia/Tokyo"}'
+    │                             │ toolbox_execute({            │
+    │                             │   name: "time_get_current_time",
+    │                             │   arguments: '{"timezone":"Asia/Tokyo"}'
     │                             │ })                           │
     │                             │─────────────────────────────►│
     │                             │                              │
-    │                             │                              │ Parse toolName
+    │                             │                              │ Parse name
     │                             │                              │ → server: "time"
     │                             │                              │ → tool: "get_current_time"
     │                             │                              │
@@ -200,7 +208,7 @@ With Toolbox plugin, LLM sees only essential tools:
 
 ```typescript
 // LLM generates:
-{ "name": "toolbox", "arguments": { "action": "search", "query": "time timezone" } }
+{ "name": "toolbox_search_bm25", "arguments": { "text": "time timezone" } }
 
 // Toolbox returns:
 {
@@ -228,15 +236,14 @@ With Toolbox plugin, LLM sees only essential tools:
 ```typescript
 // LLM generates (using schema from search):
 {
-  "name": "toolbox",
+  "name": "toolbox_execute",
   "arguments": {
-    "action": "execute",
-    "toolName": "time_get_current_time",
-    "toolArgs": "{\"timezone\":\"Asia/Tokyo\"}"
+    "name": "time_get_current_time",
+    "arguments": "{\"timezone\":\"Asia/Tokyo\"}"
   }
 }
 
-// Toolbox parses toolName: "time_get_current_time" → server="time", tool="get_current_time"
+// Toolbox parses name: "time_get_current_time" → server="time", tool="get_current_time"
 // Toolbox calls MCP server and returns result
 ```
 
@@ -246,21 +253,21 @@ With Toolbox plugin, LLM sees only essential tools:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    OPENCODE TOOL LIST                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  BUILT-IN          PLUGIN              (MCP - hidden behind Toolbox) │
-│  ─────────         ──────              ─────────────────────────│
-│  • read            • toolbox ◄────────► time_get_current_time    │
-│  • bash            • supermemory       time_convert_time        │
-│  • edit                                exa_web_search_exa       │
-│  • write                               exa_crawling_exa         │
-│  • glob                                brave_brave_web_search   │
-│  • grep                                brave_brave_news_search  │
-│  • task                                context7_resolve...      │
-│  • lsp                                 ... (50+ more)           │
+│  BUILT-IN          PLUGIN                   (MCP - hidden)      │
+│  ─────────         ──────                   ─────────────────   │
+│  • read            • toolbox_search_bm25 ◄─► time_get_current_time │
+│  • bash            • toolbox_search_regex   time_convert_time   │
+│  • edit            • toolbox_execute        exa_web_search_exa  │
+│  • write           • supermemory            exa_crawling_exa    │
+│  • glob                                     brave_web_search    │
+│  • grep                                     brave_news_search   │
+│  • task                                     context7_resolve... │
+│  • lsp                                      ... (50+ more)      │
 │  • todowrite                                                    │
 │  • todoread                                                     │
 └─────────────────────────────────────────────────────────────────┘
 
-LLM only sees left two columns (~12 tools)
+LLM only sees left two columns (~14 tools)
 Toolbox provides access to right column on-demand
 ```
 

@@ -7,16 +7,10 @@ An OpenCode plugin that implements a **tool search tool** pattern, allowing user
 OpenCode's MCP servers add tool schemas to LLM context at session start. With many MCPs, this can front-load tens of thousands of tokens, reducing "smart zone" capacity and degrading speed/accuracy.
 
 opencode-toolbox solves this by:
-- Exposing a **single `toolbox` tool** instead of 50+ MCP tools
+- Exposing **a few toolbox tools** instead of 50+ MCP tools
 - Search for tools using natural language (BM25) or regex patterns
 - Execute discovered tools through the same interface
 - Tool schemas are returned in search results for accurate LLM usage
-
-## Installation
-
-```bash
-bun add opencode-toolbox
-```
 
 ## Configuration
 
@@ -69,38 +63,27 @@ Create `~/.config/opencode/toolbox.jsonc`:
 
 ## Usage
 
-The plugin exposes a single `toolbox` tool with two actions:
+The plugin exposes three tools:
 
-### Search Action
+### toolbox_search_bm25
 
-Find tools using natural language (BM25):
+Search for tools using natural language:
 
-```json
-{
-  "tool": "toolbox",
-  "arguments": {
-    "action": "search",
-    "query": "get current time in timezone"
-  }
-}
+```
+toolbox_search_bm25({ text: "get current time in timezone" })
 ```
 
-Or use regex patterns for precise matching:
+### toolbox_search_regex
 
-```json
-{
-  "tool": "toolbox",
-  "arguments": {
-    "action": "search",
-    "pattern": "^time_.*",
-    "limit": 5
-  }
-}
+Search for tools using regex patterns on tool names:
+
+```
+toolbox_search_regex({ pattern: "time_.*", limit: 5 })
 ```
 
 ### Search Results
 
-Returns tool schemas so the LLM knows exact parameters:
+Both search tools return tool schemas so the LLM knows exact parameters:
 
 ```json
 {
@@ -122,23 +105,16 @@ Returns tool schemas so the LLM knows exact parameters:
       }
     }
   ],
-  "usage": "Use toolbox({ action: 'execute', toolName: '<name>', toolArgs: '<json>' }) to call a tool"
+  "usage": "Use toolbox_execute({ name: '<tool_name>', arguments: '<json>' }) to run a discovered tool"
 }
 ```
 
-### Execute Action
+### toolbox_execute
 
-Call discovered tools with JSON-encoded arguments:
+Execute a discovered tool with JSON-encoded arguments:
 
-```json
-{
-  "tool": "toolbox",
-  "arguments": {
-    "action": "execute",
-    "toolName": "time_get_current_time",
-    "toolArgs": "{\"timezone\": \"Asia/Tokyo\"}"
-  }
-}
+```
+toolbox_execute({ name: "time_get_current_time", arguments: '{"timezone": "Asia/Tokyo"}' })
 ```
 
 ## Example Flow
@@ -147,16 +123,12 @@ Call discovered tools with JSON-encoded arguments:
 User: "What time is it in Tokyo?"
 
 LLM: I need to find a time-related tool.
-     toolbox({ action: "search", query: "current time timezone" })
+     toolbox_search_bm25({ text: "current time timezone" })
 
 Toolbox: Returns time_get_current_time with its schema
 
 LLM: Now I know the parameters. Let me call it.
-     toolbox({ 
-       action: "execute",
-       toolName: "time_get_current_time", 
-       toolArgs: '{"timezone":"Asia/Tokyo"}'
-     })
+     toolbox_execute({ name: "time_get_current_time", arguments: '{"timezone":"Asia/Tokyo"}' })
 
 Toolbox: { "datetime": "2026-01-07T02:15:00+09:00", "timezone": "Asia/Tokyo" }
 
@@ -217,7 +189,7 @@ bun run build
 ### Execute fails
 
 1. Verify the tool name format: `serverName_toolName`
-2. Check `toolArgs` is valid JSON
+2. Check `arguments` is valid JSON
 3. Ensure underlying MCP server is running
 
 ## License
