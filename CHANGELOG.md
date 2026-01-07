@@ -8,16 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-01-08
 
 ### Added
-- **Observability**: Comprehensive logging to OpenCode's log system
-- **Status Tool**: New `toolbox_status` command for checking plugin and server health
+- **Observability**: Dedicated log file at `~/.local/share/opencode/toolbox.log`
+- **Status Tool**: New `toolbox_status` tool for checking plugin and server health
+- **Slash Command**: Auto-creates `/toolbox-status` command on first launch
 - **Health Metrics**: Track search count, execution count, and success rate
 - **Server Connection Tracking**: Log MCP server initialization and connection status
 - **Error Logging**: Detailed error messages for failed operations
 - **Status Indicators**: Connection ratio (e.g., "2/3") to highlight failures
+- **Tests**: Comprehensive test suite for `toolbox_status` tool (9 new tests)
 
 ### Changed
 - Updated README with observability section and logging documentation
 - Added troubleshooting guidance using `toolbox_status` and logs
+- Silent logging (no screen output) to prevent UI flickering
 
 ## [0.4.0] - 2026-01-08
 

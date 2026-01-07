@@ -205,6 +205,15 @@ Returns a comprehensive status object:
 - `degraded`: Some servers failed to connect (check `servers.failed`)
 - `unknown`: No servers configured or initialization failed
 
+### /toolbox-status Slash Command
+
+The plugin automatically creates a `/toolbox-status` slash command on first launch:
+
+```
+~/.config/opencode/command/toolbox-status.md
+```
+
+Use it in OpenCode by typing `/toolbox-status` to get a formatted status report.
 
 ## Search Modes
 

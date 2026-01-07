@@ -35,7 +35,7 @@ describe("ToolboxPlugin", () => {
     delete process.env.OPENCODE_TOOLBOX_CONFIG;
   });
 
-  test("returns all three tools when config is valid", async () => {
+  test("returns all four tools when config is valid", async () => {
     // Create a temp config file
     const configPath = "/tmp/toolbox-test-config.jsonc";
     await Bun.write(configPath, JSON.stringify({
@@ -51,6 +51,7 @@ describe("ToolboxPlugin", () => {
     expect(hooks.tool?.toolbox_search_bm25).toBeDefined();
     expect(hooks.tool?.toolbox_search_regex).toBeDefined();
     expect(hooks.tool?.toolbox_execute).toBeDefined();
+    expect(hooks.tool?.toolbox_status).toBeDefined();
 
     delete process.env.OPENCODE_TOOLBOX_CONFIG;
   });
@@ -258,5 +259,116 @@ describe("toolbox_execute execute", () => {
     
     expect(parsed.success).toBe(false);
     expect(parsed.error).toContain("not found");
+  });
+});
+
+describe("toolbox_status schema", () => {
+  let statusTool: any;
+
+  beforeEach(async () => {
+    const configPath = "/tmp/toolbox-test-config.jsonc";
+    await Bun.write(configPath, JSON.stringify({
+      mcp: {},
+      settings: { defaultLimit: 5 }
+    }));
+
+    process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
+
+    const hooks = await ToolboxPlugin(createMockPluginInput());
+    statusTool = hooks.tool?.toolbox_status;
+  });
+
+  test("has description with status info", () => {
+    expect(statusTool.description).toContain("status");
+    expect(statusTool.description).toContain("MCP server");
+  });
+
+  test("has no required parameters", () => {
+    expect(statusTool.args).toEqual({});
+  });
+});
+
+describe("toolbox_status execute", () => {
+  let statusTool: any;
+
+  beforeEach(async () => {
+    const configPath = "/tmp/toolbox-test-config.jsonc";
+    await Bun.write(configPath, JSON.stringify({
+      mcp: {},
+      settings: { defaultLimit: 5 }
+    }));
+
+    process.env.OPENCODE_TOOLBOX_CONFIG = configPath;
+
+    const hooks = await ToolboxPlugin(createMockPluginInput());
+    statusTool = hooks.tool?.toolbox_status;
+  });
+
+  test("returns status object with plugin section", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    expect(parsed.plugin).toBeDefined();
+    expect(parsed.plugin.initialized).toBe(true);
+    expect(parsed.plugin.configPath).toBeDefined();
+    expect(typeof parsed.plugin.uptime).toBe("number");
+    expect(typeof parsed.plugin.searches).toBe("number");
+    expect(typeof parsed.plugin.executions).toBe("number");
+  });
+
+  test("returns status object with servers section", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    expect(parsed.servers).toBeDefined();
+    expect(typeof parsed.servers.total).toBe("number");
+    expect(typeof parsed.servers.connected).toBe("number");
+    expect(typeof parsed.servers.failed).toBe("number");
+    expect(parsed.servers.connectionRatio).toBeDefined();
+    expect(Array.isArray(parsed.servers.details)).toBe(true);
+  });
+
+  test("returns status object with tools section", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    expect(parsed.tools).toBeDefined();
+    expect(typeof parsed.tools.total).toBe("number");
+    expect(typeof parsed.tools.available).toBe("number");
+  });
+
+  test("returns status object with health section", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    expect(parsed.health).toBeDefined();
+    expect(parsed.health.status).toBeDefined();
+    expect(parsed.health.message).toBeDefined();
+  });
+
+  test("shows healthy status when no servers configured", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    // With no servers, status should be "unknown"
+    expect(parsed.health.status).toBe("unknown");
+    expect(parsed.health.message).toBe("No servers configured");
+  });
+
+  test("shows correct connection ratio format", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    // With 0 servers, ratio should be "0/0"
+    expect(parsed.servers.connectionRatio).toBe("0/0");
+  });
+
+  test("tracks metrics starting at zero", async () => {
+    const result = await statusTool.execute({}, {} as any);
+    const parsed = JSON.parse(result);
+    
+    expect(parsed.plugin.searches).toBe(0);
+    expect(parsed.plugin.executions).toBe(0);
+    expect(parsed.plugin.successRate).toBe("N/A");
   });
 });

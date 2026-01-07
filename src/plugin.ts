@@ -1,6 +1,6 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { appendFile, mkdir } from "fs/promises";
+import { appendFile, mkdir, writeFile, access } from "fs/promises";
 import { loadConfig } from "./config";
 import { MCPManager } from "./mcp-client";
 import { BM25Index, searchWithRegex, MAX_REGEX_LENGTH } from "./search";
@@ -9,6 +9,16 @@ import type { CatalogTool, SearchResult } from "./catalog";
 const DEFAULT_CONFIG_PATH = `${process.env.HOME}/.config/opencode/toolbox.jsonc`;
 const LOG_FILE_PATH = `${process.env.HOME}/.local/share/opencode/toolbox.log`;
 const LOG_DIR = `${process.env.HOME}/.local/share/opencode`;
+
+// Slash command paths
+const COMMAND_DIR = `${process.env.HOME}/.config/opencode/command`;
+const COMMAND_FILE_PATH = `${COMMAND_DIR}/toolbox-status.md`;
+const COMMAND_CONTENT = `---
+description: Check toolbox plugin status and server health
+---
+Run toolbox_status({}) tool and show me the results in a readable format.
+Highlight any failed servers or issues.
+`;
 
 /**
  * Parse tool name into server and original tool name
@@ -94,6 +104,22 @@ function log(level: string, message: string, extra?: any) {
 }
 
 /**
+ * Create /toolbox-status slash command if it doesn't exist
+ * Non-blocking, fire and forget
+ */
+function ensureCommandFile() {
+  access(COMMAND_FILE_PATH).catch(() => {
+    // File doesn't exist, create it
+    mkdir(COMMAND_DIR, { recursive: true })
+      .then(() => writeFile(COMMAND_FILE_PATH, COMMAND_CONTENT))
+      .then(() => log("info", "Created /toolbox-status command file"))
+      .catch(() => {
+        // Ignore errors - non-critical
+      });
+  });
+}
+
+/**
  * System prompt injection - concise instructions for tool search
  */
 const SYSTEM_PROMPT_BASE = `# Extended Toolbox
@@ -176,6 +202,9 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
   let searchCount = 0;
   let executionCount = 0;
   let executionSuccessCount = 0;
+
+  // Create /toolbox-status command file if it doesn't exist
+  ensureCommandFile();
 
   // Log successful config load - non-blocking, file only
   const serverNames = Object.keys(config.mcp);
