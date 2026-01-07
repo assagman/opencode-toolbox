@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-08
+
+### Added
+- Dynamic toolbox schema in system prompt listing all registered MCP servers and their tools
+- Tool names now use clear `<server>_<tool>` format matching toolbox_execute() expectations
+- Makefile with build, test, typecheck, and release helper targets
+- RELEASE.md documenting the release process
+
+### Changed
+- System prompt now includes JSON schema of available tools for better LLM understanding
+- Simplified system prompt rules for clarity
+
 ## [0.2.0] - 2026-01-08
 
 ### Added
