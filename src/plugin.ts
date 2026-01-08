@@ -2,9 +2,11 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { appendFile, mkdir, writeFile, access } from "fs/promises";
 import { loadConfig } from "./config";
+import type { ConnectionConfig } from "./config";
 import { MCPManager } from "./mcp-client";
 import { BM25Index, searchWithRegex, MAX_REGEX_LENGTH } from "./search";
 import type { CatalogTool, SearchResult } from "./catalog";
+import { globalProfiler } from "./profiler";
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME}/.config/opencode/toolbox.jsonc`;
 const LOG_FILE_PATH = `${process.env.HOME}/.local/share/opencode/toolbox.log`;
@@ -86,6 +88,10 @@ const STATUS_DESC = `Get toolbox status including plugin initialization, MCP ser
 
 Shows success/total metrics to highlight failures. Use to check if toolbox is working correctly.`;
 
+const PERF_DESC = `Get detailed performance metrics for the toolbox plugin.
+
+Shows initialization times, search latencies, execution stats, and per-server metrics.`;
+
 /**
  * Safe logging helper - writes to ~/.local/share/opencode/toolbox.log
  * Never blocks or throws
@@ -126,10 +132,10 @@ const SYSTEM_PROMPT_BASE = `# Extended Toolbox
 
 You have access to an extended toolbox with additional capabilities (web search, time utilities, code search, etc.).
 
-## Rule
-ALWAYS search before saying "I cannot do that" or "I don't have access to."
-DO NOT try to execute a tool without having the tool's exact tool schema. If you don't have the tool's schema
-  then run toolbox_search_* to get them.
+## Rules
+1. ALWAYS toolbox_search_* before saying "I cannot do that" or "I don't have access to."
+2. ALWAYS toolbox_search_* if you think that user wants you to use some tools
+3. ALWAYS toolbox_search_* if you think that user may refer specific tool name which is not exist in the context
 
 ## Workflow
 1. Search: toolbox_search_bm25({ text: "what you need" }) or toolbox_search_regex({ pattern: "prefix_.*" })
@@ -160,11 +166,8 @@ function generateSystemPrompt(mcpManager: MCPManager): string {
 
   return `${SYSTEM_PROMPT_BASE}
 
-## Toolbox Schema
-Tool names use \`<server>_<tool>\` format. Pass exact names to toolbox_execute().
-\`\`\`json
-${JSON.stringify(toolboxSchema, null, 2)}
-\`\`\``;
+## Registered MCP Servers
+${Object.entries(toolboxSchema).map(([server, tools]) => `- ${server}: ${tools.map(t => t.split('_').slice(1).join('_')).join(', ')}`).join('\n')}`;
 }
 
 /**
@@ -175,6 +178,7 @@ ${JSON.stringify(toolboxSchema, null, 2)}
  * - toolbox_search_regex: Pattern-based search
  * - toolbox_execute: Execute discovered tools
  * - toolbox_status: Get plugin and server status
+ * - toolbox_perf: Get performance metrics
  */
 export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
   const { client } = ctx;
@@ -192,11 +196,17 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
   }
 
   const config = configResult.data;
+  const initMode = config.settings?.initMode || "eager";
+  const connectionConfig: ConnectionConfig = {
+    connectTimeout: config.settings?.connection?.connectTimeout || 5000,
+    requestTimeout: config.settings?.connection?.requestTimeout || 30000,
+    retryAttempts: config.settings?.connection?.retryAttempts || 2,
+    retryDelay: config.settings?.connection?.retryDelay || 1000,
+  };
 
   // Initialize MCP manager and search index
-  const mcpManager = new MCPManager();
+  const mcpManager = new MCPManager({ connectionConfig });
   const bm25Index = new BM25Index();
-  let initialized = false;
 
   // Track metrics
   let searchCount = 0;
@@ -212,49 +222,67 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
     configPath,
     serverCount: serverNames.length,
     servers: serverNames,
+    initMode,
   });
 
   /**
-   * Lazy initialization - connect to MCP servers on first use
+   * Set up progressive tool loading - index tools as servers connect
+   */
+  mcpManager.on("server:connected", (serverName: string, tools: CatalogTool[]) => {
+    const startTime = performance.now();
+    bm25Index.addToolsBatch(tools);
+    const indexTime = performance.now() - startTime;
+    
+    globalProfiler.recordIncrementalUpdate(tools.length);
+    
+    log("info", `Server ${serverName} connected, indexed ${tools.length} tools in ${indexTime.toFixed(2)}ms`);
+  });
+
+  mcpManager.on("server:error", (serverName: string, error: string) => {
+    log("warn", `Server ${serverName} failed: ${error}`);
+  });
+
+  mcpManager.on("init:complete", (state) => {
+    const duration = globalProfiler.getInitDuration();
+    const servers = mcpManager.getAllServers();
+    const connectedServers = servers.filter((s) => s.status === "connected");
+    
+    log("info", `Initialization complete in ${duration?.toFixed(2)}ms: ${connectedServers.length}/${servers.length} servers, ${bm25Index.size} tools indexed`, {
+      state,
+      totalServers: servers.length,
+      connectedServers: connectedServers.length,
+      totalTools: bm25Index.size,
+    });
+  });
+
+  /**
+   * Start initialization based on mode
+   * - eager: Start immediately, don't block plugin load
+   * - lazy: Wait until first tool use
+   */
+  if (initMode === "eager") {
+    // Non-blocking background initialization
+    mcpManager.initializeBackground(config.mcp);
+    log("info", "Started eager background initialization");
+  }
+
+  /**
+   * Ensure initialized - for lazy mode or if eager init hasn't completed
    */
   async function ensureInitialized(): Promise<void> {
-    if (initialized) return;
-
-    try {
-      log("info", "Initializing MCP servers...");
-
-      await mcpManager.initialize(config.mcp);
-      const allTools = mcpManager.getAllCatalogTools();
-      bm25Index.indexTools(allTools);
-      initialized = true;
-
-      const servers = mcpManager.getAllServers();
-      const connectedServers = servers.filter((s) => s.status === "connected");
-      const failedServers = servers.filter((s) => s.status === "error");
-
-      const initMsg = `Initialization complete: ${connectedServers.length}/${servers.length} servers connected, ${allTools.length} tools indexed`;
-      log("info", initMsg, {
-        totalServers: servers.length,
-        connectedServers: connectedServers.length,
-        failedServers: failedServers.length,
-        totalTools: allTools.length,
-        servers: servers.map((s) => ({
-          name: s.name,
-          status: s.status,
-          toolCount: s.tools.length,
-          error: s.error || null,
-        })),
-      });
-
-      if (failedServers.length > 0) {
-        const warnMsg = `${failedServers.length} server(s) failed to connect: ${failedServers.map((s) => s.name).join(", ")}`;
-        log("warn", warnMsg);
-      }
-    } catch (error) {
-      const errorMsg = `Failed to initialize MCP servers: ${error instanceof Error ? error.message : String(error)}`;
-      log("error", errorMsg);
-      throw error;
+    if (mcpManager.isReady()) {
+      return; // Already ready (at least partially)
     }
+
+    if (initMode === "lazy" && mcpManager.getInitState() === "idle") {
+      // Lazy mode - start initialization now
+      log("info", "Starting lazy initialization on first use");
+      await mcpManager.initialize(config.mcp);
+      return;
+    }
+
+    // Eager mode but not ready yet - wait for at least partial readiness
+    await mcpManager.waitForPartial();
   }
 
   return {
@@ -279,9 +307,12 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
         },
 
         async execute(args) {
+          const timer = globalProfiler.startTimer("search.bm25");
+          
           try {
             await ensureInitialized();
           } catch (error) {
+            timer();
             return JSON.stringify({
               success: false,
               error: `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
@@ -292,15 +323,17 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           const searchLimit = args.limit || config.settings?.defaultLimit || 5;
           const allTools = mcpManager.getAllCatalogTools();
           const results = bm25Index.search(args.text, searchLimit);
+          const duration = timer();
 
           log(
             "info",
-            `BM25 search completed: "${args.text}" -> ${results.length} results`,
+            `BM25 search completed: "${args.text}" -> ${results.length} results in ${duration.toFixed(2)}ms`,
             {
               searchType: "bm25",
               query: args.text,
               resultsCount: results.length,
               limit: searchLimit,
+              durationMs: duration,
             },
           );
 
@@ -328,9 +361,12 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
         },
 
         async execute(args) {
+          const timer = globalProfiler.startTimer("search.regex");
+          
           try {
             await ensureInitialized();
           } catch (error) {
+            timer();
             return JSON.stringify({
               success: false,
               error: `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
@@ -341,6 +377,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           const searchLimit = args.limit || config.settings?.defaultLimit || 5;
           const allTools = mcpManager.getAllCatalogTools();
           const result = searchWithRegex(allTools, args.pattern, searchLimit);
+          const duration = timer();
 
           if ("error" in result) {
             log(
@@ -355,12 +392,13 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
           log(
             "info",
-            `Regex search completed: "${args.pattern}" -> ${result.length} results`,
+            `Regex search completed: "${args.pattern}" -> ${result.length} results in ${duration.toFixed(2)}ms`,
             {
               searchType: "regex",
               pattern: args.pattern,
               resultsCount: result.length,
               limit: searchLimit,
+              durationMs: duration,
             },
           );
 
@@ -390,9 +428,12 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
         },
 
         async execute(args) {
+          const timer = globalProfiler.startTimer("tool.execute");
+          
           try {
             await ensureInitialized();
           } catch (error) {
+            timer();
             return JSON.stringify({
               success: false,
               error: `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
@@ -402,6 +443,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           // Parse tool name to get server and original tool name
           const parsed = parseToolName(args.name);
           if (!parsed) {
+            timer();
             log("warn", `Invalid tool name format: ${args.name}`, {
               toolName: args.name,
             });
@@ -417,6 +459,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             try {
               toolArgs = JSON.parse(args.arguments);
             } catch (error) {
+              timer();
               log(
                 "warn",
                 `Failed to parse arguments as JSON for ${args.name}`,
@@ -436,16 +479,15 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
           // Call the underlying MCP server
           try {
-            const startTime = Date.now();
             const result = await mcpManager.callTool(
               parsed.serverName,
               parsed.toolName,
               toolArgs,
             );
-            const duration = Date.now() - startTime;
+            const duration = timer();
             executionSuccessCount++;
 
-            log("info", `Tool executed successfully: ${args.name}`, {
+            log("info", `Tool executed successfully: ${args.name} in ${duration.toFixed(2)}ms`, {
               server: parsed.serverName,
               tool: parsed.toolName,
               durationMs: duration,
@@ -456,11 +498,13 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
               result,
             });
           } catch (error) {
+            const duration = timer();
             const errorMsg = `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`;
             log("error", errorMsg, {
               server: parsed.serverName,
               tool: parsed.toolName,
               error: errorMsg,
+              durationMs: duration,
             });
             return JSON.stringify({
               success: false,
@@ -481,7 +525,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
         async execute() {
           // Initialize if not already done
-          if (!initialized) {
+          if (!mcpManager.isReady()) {
             try {
               await ensureInitialized();
             } catch (error) {
@@ -502,10 +546,14 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             (s) => s.status === "connecting",
           );
           const totalTools = mcpManager.getAllCatalogTools().length;
+          const initDuration = globalProfiler.getInitDuration();
 
           const status = {
             plugin: {
-              initialized: true,
+              initialized: mcpManager.isComplete(),
+              initState: mcpManager.getInitState(),
+              initMode,
+              initDurationMs: initDuration ? Math.round(initDuration) : null,
               configPath,
               uptime: process.uptime(),
               searches: searchCount,
@@ -532,7 +580,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             },
             tools: {
               total: totalTools,
-              available: totalTools, // Only connected servers contribute to available tools
+              indexed: bm25Index.size,
               serversWithTools: servers.filter((s) => s.tools.length > 0)
                 .length,
             },
@@ -566,17 +614,46 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           return JSON.stringify(status, null, 2);
         },
       }),
+
+      /**
+       * Performance Metrics Tool
+       * Get detailed performance information
+       */
+      toolbox_perf: tool({
+        description: PERF_DESC,
+
+        args: {},
+
+        async execute() {
+          const report = globalProfiler.export();
+          
+          return JSON.stringify({
+            ...report,
+            indexStats: bm25Index.getStats(),
+            config: {
+              initMode,
+              connectionTimeout: connectionConfig.connectTimeout,
+              requestTimeout: connectionConfig.requestTimeout,
+              retryAttempts: connectionConfig.retryAttempts,
+            },
+          }, null, 2);
+        },
+      }),
     },
 
     // Inject system prompt with tool search instructions
     "experimental.chat.system.transform": async (_input, output) => {
-      try {
-        await ensureInitialized();
-        output.system.push(generateSystemPrompt(mcpManager));
-      } catch {
-        // If initialization fails, use base prompt without server listing
-        output.system.push(SYSTEM_PROMPT_BASE);
+      // Wait for partial readiness before generating system prompt
+      // This is non-blocking if already ready
+      if (!mcpManager.isReady() && initMode === "eager") {
+        try {
+          await mcpManager.waitForPartial();
+        } catch {
+          // Continue with base prompt if waiting fails
+        }
       }
+      
+      output.system.push(generateSystemPrompt(mcpManager));
     },
   };
 };
