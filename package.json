@@ -16,7 +16,11 @@
     "dev": "bun --hot src/index.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "bun run bench:search && bun run bench:init && bun run bench:concurrent",
+    "bench:search": "bun run bench/search.bench.ts",
+    "bench:init": "bun run bench/init.bench.ts",
+    "bench:concurrent": "bun run bench/concurrent.bench.ts"
   },
   "files": [
     "dist",

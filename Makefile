@@ -1,4 +1,5 @@
 .PHONY: build clean rebuild test typecheck
+.PHONY: bench bench-search bench-init bench-concurrent
 .PHONY: release-tag release-push
 
 # Build
@@ -16,6 +17,18 @@ test:
 
 typecheck:
 	tsc --noEmit
+
+# Benchmarks
+bench: bench-search bench-init bench-concurrent
+
+bench-search:
+	bun run bench/search.bench.ts
+
+bench-init:
+	bun run bench/init.bench.ts
+
+bench-concurrent:
+	bun run bench/concurrent.bench.ts
 
 # Release helpers (see RELEASE.md for full process)
 release-tag:
