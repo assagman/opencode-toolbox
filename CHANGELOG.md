@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-08
+
+### Added
+- **Non-blocking eager initialization**: MCP servers connect in background on plugin load, not blocking startup
+- **Progressive tool loading**: Tools are indexed incrementally as servers connect
+- **Performance tool**: New `toolbox_perf` tool for detailed performance metrics
+- **Profiling infrastructure**: Track init times, search latencies, and execution stats
+- **Connection settings**: Configurable timeouts and retry behavior (`connection.connectTimeout`, `requestTimeout`, `retryAttempts`, `retryDelay`)
+- **Init mode setting**: Choose between `eager` (default) or `lazy` initialization via `settings.initMode`
+- **Benchmark suite**: Performance benchmarks for search, init, and concurrent operations
+
+### Changed
+- MCPManager rewritten with event-based architecture for non-blocking init
+- BM25Index now supports async and incremental indexing
+- Improved startup logging with load duration and log path
+- Skip logging in test environment for cleaner test output
+
+### Documentation
+- Synced all docs with codebase (README, ARCHITECTURE, CONFIG)
+- Added `toolbox_perf` documentation
+- Documented `initMode` and `connection` settings
+- Updated tool count in architecture diagrams (3→5)
+
 ## [0.5.1] - 2026-01-08
 
 ### Fixed
