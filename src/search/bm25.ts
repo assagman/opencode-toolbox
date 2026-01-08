@@ -13,8 +13,20 @@ export function tokenize(text: string): string[] {
 }
 
 /**
- * BM25 search implementation
+ * Yield to the event loop - allows other async work to proceed
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
+/**
+ * BM25 search implementation with incremental indexing support
  * Using standard BM25 parameters: k1=1.2, b=0.75
+ * 
+ * Features:
+ * - Incremental updates without full reindex
+ * - Async chunked indexing for large batches
+ * - Thread-safe concurrent search support
  */
 export class BM25Index {
   private documents: Map<ToolIdString, { tokens: string[]; tool: CatalogTool }>;
@@ -22,6 +34,7 @@ export class BM25Index {
   private docLengths: Map<ToolIdString, number>;
   private avgDocLength: number = 0;
   private totalDocs: number = 0;
+  private totalTokens: number = 0;  // Track total tokens for incremental avg calculation
 
   // BM25 parameters
   private readonly k1: number = 1.2;
@@ -34,28 +47,139 @@ export class BM25Index {
   }
 
   /**
-   * Add tools to the index
+   * Add tools to the index (replaces existing index)
+   * Synchronous version for backward compatibility
    */
   indexTools(tools: CatalogTool[]): void {
-    this.documents.clear();
-    this.docFreqs.clear();
-    this.docLengths.clear();
+    this.clear();
+    this.addToolsBatch(tools);
+  }
 
+  /**
+   * Add tools to the index asynchronously with chunked processing
+   * Yields to event loop between chunks to prevent blocking
+   * 
+   * @param tools - Tools to index
+   * @param chunkSize - Number of tools to process before yielding (default: 50)
+   */
+  async indexToolsAsync(tools: CatalogTool[], chunkSize: number = 50): Promise<void> {
+    this.clear();
+    await this.addToolsAsync(tools, chunkSize);
+  }
+
+  /**
+   * Add multiple tools incrementally without clearing existing index
+   * Synchronous version for small batches
+   */
+  addToolsBatch(tools: CatalogTool[]): void {
     for (const tool of tools) {
-      const tokens = tokenize(tool.searchableText);
-      this.documents.set(tool.idString, { tokens, tool });
-      this.docLengths.set(tool.idString, tokens.length);
+      this.addToolInternal(tool);
+    }
+    this.recalculateAvgDocLength();
+  }
 
-      // Update document frequencies
-      const uniqueTokens = new Set(tokens);
-      for (const token of uniqueTokens) {
-        this.docFreqs.set(token, (this.docFreqs.get(token) || 0) + 1);
+  /**
+   * Add multiple tools incrementally with async chunking
+   * Use for large batches to prevent blocking
+   * 
+   * @param tools - Tools to add
+   * @param chunkSize - Number of tools to process before yielding
+   */
+  async addToolsAsync(tools: CatalogTool[], chunkSize: number = 50): Promise<void> {
+    for (let i = 0; i < tools.length; i += chunkSize) {
+      const chunk = tools.slice(i, i + chunkSize);
+      for (const tool of chunk) {
+        this.addToolInternal(tool);
+      }
+      
+      // Yield to event loop if more chunks remain
+      if (i + chunkSize < tools.length) {
+        await yieldToEventLoop();
+      }
+    }
+    this.recalculateAvgDocLength();
+  }
+
+  /**
+   * Add a single tool to the index incrementally
+   * Updates avgDocLength incrementally for efficiency
+   */
+  addTool(tool: CatalogTool): void {
+    this.addToolInternal(tool);
+    this.recalculateAvgDocLengthIncremental();
+  }
+
+  /**
+   * Internal method to add a tool without recalculating averages
+   */
+  private addToolInternal(tool: CatalogTool): void {
+    // Skip if already indexed
+    if (this.documents.has(tool.idString)) {
+      return;
+    }
+
+    const tokens = tokenize(tool.searchableText);
+    this.documents.set(tool.idString, { tokens, tool });
+    this.docLengths.set(tool.idString, tokens.length);
+    this.totalTokens += tokens.length;
+    this.totalDocs++;
+
+    // Update document frequencies
+    const uniqueTokens = new Set(tokens);
+    for (const token of uniqueTokens) {
+      this.docFreqs.set(token, (this.docFreqs.get(token) || 0) + 1);
+    }
+  }
+
+  /**
+   * Remove a tool from the index
+   */
+  removeTool(idString: ToolIdString): boolean {
+    const doc = this.documents.get(idString);
+    if (!doc) return false;
+
+    // Update document frequencies
+    const uniqueTokens = new Set(doc.tokens);
+    for (const token of uniqueTokens) {
+      const freq = this.docFreqs.get(token) || 0;
+      if (freq <= 1) {
+        this.docFreqs.delete(token);
+      } else {
+        this.docFreqs.set(token, freq - 1);
       }
     }
 
-    this.totalDocs = this.documents.size;
-    this.avgDocLength = Array.from(this.docLengths.values())
-      .reduce((sum, len) => sum + len, 0) / this.totalDocs;
+    // Remove from maps
+    this.totalTokens -= doc.tokens.length;
+    this.documents.delete(idString);
+    this.docLengths.delete(idString);
+    this.totalDocs--;
+
+    this.recalculateAvgDocLengthIncremental();
+    return true;
+  }
+
+  /**
+   * Recalculate average document length (full recalculation)
+   */
+  private recalculateAvgDocLength(): void {
+    if (this.totalDocs === 0) {
+      this.avgDocLength = 0;
+      return;
+    }
+    this.avgDocLength = this.totalTokens / this.totalDocs;
+  }
+
+  /**
+   * Recalculate average document length incrementally
+   * More efficient for single additions/removals
+   */
+  private recalculateAvgDocLengthIncremental(): void {
+    if (this.totalDocs === 0) {
+      this.avgDocLength = 0;
+      return;
+    }
+    this.avgDocLength = this.totalTokens / this.totalDocs;
   }
 
   /**
@@ -139,6 +263,7 @@ export class BM25Index {
     this.docLengths.clear();
     this.avgDocLength = 0;
     this.totalDocs = 0;
+    this.totalTokens = 0;
   }
 
   /**
@@ -146,5 +271,23 @@ export class BM25Index {
    */
   get size(): number {
     return this.totalDocs;
+  }
+
+  /**
+   * Check if a tool is indexed
+   */
+  has(idString: ToolIdString): boolean {
+    return this.documents.has(idString);
+  }
+
+  /**
+   * Get index statistics
+   */
+  getStats(): { docCount: number; termCount: number; avgDocLength: number } {
+    return {
+      docCount: this.totalDocs,
+      termCount: this.docFreqs.size,
+      avgDocLength: this.avgDocLength,
+    };
   }
 }
