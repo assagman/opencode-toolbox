@@ -250,32 +250,18 @@ You have access to an extended toolbox with additional capabilities (web search,
 2. Execute: toolbox_execute({ name: "tool_name", arguments: '{"key": "value"}' })`;
 
 /**
- * Generate system prompt with registered MCP servers and their tools
- * Uses JSON schema format with full tool names (serverName_toolName)
+ * Generate system prompt with configured MCP server names
+ * Server names come from config (instant) - no need to wait for connections
  */
-function generateSystemPrompt(mcpManager: MCPManager): string {
-  const servers = mcpManager.getAllServers();
-
-  if (servers.length === 0) {
-    return SYSTEM_PROMPT_BASE;
-  }
-
-  const toolboxSchema: Record<string, string[]> = {};
-
-  for (const server of servers) {
-    if (server.status === "connected" && server.tools.length > 0) {
-      toolboxSchema[server.name] = server.tools.map((t) => t.idString);
-    }
-  }
-
-  if (Object.keys(toolboxSchema).length === 0) {
+function generateSystemPrompt(configuredServers: string[]): string {
+  if (configuredServers.length === 0) {
     return SYSTEM_PROMPT_BASE;
   }
 
   return `${SYSTEM_PROMPT_BASE}
 
 ## Registered MCP Servers
-${Object.entries(toolboxSchema).map(([server, tools]) => `- ${server}: ${tools.map(t => t.split('_').slice(1).join('_')).join(', ')}`).join('\n')}`;
+- ${configuredServers.join(", ")}`;
 }
 
 /**
@@ -920,18 +906,10 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
     },
 
     // Inject system prompt with tool search instructions
+    // NOTE: We use serverNames from config (instant) - no waiting for connections.
+    // Tools are discoverable via toolbox_search_* once servers connect.
     "experimental.chat.system.transform": async (_input, output) => {
-      // Wait for partial readiness before generating system prompt
-      // This is non-blocking if already ready
-      if (!mcpManager.isReady() && initMode === "eager") {
-        try {
-          await mcpManager.waitForPartial();
-        } catch {
-          // Continue with base prompt if waiting fails
-        }
-      }
-      
-      output.system.push(generateSystemPrompt(mcpManager));
+      output.system.push(generateSystemPrompt(serverNames));
     },
   };
 };
