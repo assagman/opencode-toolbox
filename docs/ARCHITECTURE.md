@@ -2,7 +2,7 @@
 
 ## Overview
 
-Toolbox (Tool Search Tool) is an OpenCode plugin that implements the "tool search tool" pattern. It reduces LLM context bloat by exposing a few toolbox tools (`toolbox_search_bm25`, `toolbox_search_regex`, `toolbox_execute`) that provide on-demand access to a catalog of MCP server tools.
+Toolbox (Tool Search Tool) is an OpenCode plugin that implements the "tool search tool" pattern. It reduces LLM context bloat by exposing five toolbox tools (`toolbox_search_bm25`, `toolbox_search_regex`, `toolbox_execute`, `toolbox_status`, `toolbox_perf`) that provide on-demand access to a catalog of MCP server tools.
 
 ## Tool Registration Architecture
 
@@ -110,7 +110,7 @@ With Toolbox plugin, LLM sees only essential tools:
                     │ 2. Connect to configured MCP servers  │
                     │ 3. Fetch all tools from each server   │
                     │ 4. Build internal catalog             │
-                    │ 5. Return 3 toolbox tools             │
+                    │ 5. Return 5 toolbox tools             │
                     └───────────────────────────────────────┘
                               │
                               ▼
@@ -127,6 +127,8 @@ With Toolbox plugin, LLM sees only essential tools:
                     │  • toolbox_search_bm25  ◄── PLUGIN    │
                     │  • toolbox_search_regex ◄── PLUGIN    │
                     │  • toolbox_execute      ◄── PLUGIN    │
+                    │  • toolbox_status       ◄── PLUGIN    │
+                    │  • toolbox_perf         ◄── PLUGIN    │
                     │                                       │
                     │  (NO time_*, exa_*, brave_* etc.)     │
                     └───────────────────────────────────────┘

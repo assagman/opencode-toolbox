@@ -17,6 +17,12 @@
   },
   "settings": {
     "defaultLimit": 5,
-    "maxActivatedTools": 50
+    "initMode": "eager",
+    "connection": {
+      "connectTimeout": 5000,
+      "requestTimeout": 30000,
+      "retryAttempts": 2,
+      "retryDelay": 1000
+    }
   }
 }

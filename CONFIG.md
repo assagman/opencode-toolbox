@@ -53,7 +53,14 @@
 
   // Optional settings
   "settings": {
-    "defaultLimit": 5  // Default number of search results (1-20)
+    "defaultLimit": 5,  // Default number of search results (1-20)
+    "initMode": "eager",  // "eager" (default) or "lazy"
+    "connection": {
+      "connectTimeout": 5000,  // Connection timeout in ms
+      "requestTimeout": 30000,  // Request timeout in ms
+      "retryAttempts": 2,  // Retry attempts on failure
+      "retryDelay": 1000  // Delay between retries in ms
+    }
   }
 }
 ```
@@ -121,6 +128,16 @@ If the environment variable doesn't exist, it will be replaced with an empty str
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `defaultLimit` | number | 5 | Default number of search results (1-20) |
+| `initMode` | "eager" \| "lazy" | "eager" | When to connect to MCP servers (see below) |
+| `connection.connectTimeout` | number | 5000 | Connection timeout in milliseconds |
+| `connection.requestTimeout` | number | 30000 | Request timeout in milliseconds |
+| `connection.retryAttempts` | number | 2 | Number of retry attempts on failure (0-10) |
+| `connection.retryDelay` | number | 1000 | Delay between retries in milliseconds |
+
+### Initialization Modes
+
+- **`eager`** (default): Start connecting to MCP servers immediately when the plugin loads. Connections happen in the background and don't block plugin startup. First search/execute may wait briefly if servers haven't finished connecting.
+- **`lazy`**: Only connect to servers when the first tool is used. Reduces startup overhead but adds latency to the first operation.
 
 ## Common Mistakes
 

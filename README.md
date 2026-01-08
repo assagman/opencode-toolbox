@@ -63,7 +63,7 @@ Create `~/.config/opencode/toolbox.jsonc`:
 
 ## Usage
 
-The plugin exposes four tools:
+The plugin exposes five tools:
 
 ### toolbox_search_bm25
 
@@ -214,6 +214,41 @@ The plugin automatically creates a `/toolbox-status` slash command on first laun
 ```
 
 Use it in OpenCode by typing `/toolbox-status` to get a formatted status report.
+
+### toolbox_perf
+
+Get detailed performance metrics for the toolbox plugin:
+
+```
+toolbox_perf({})
+```
+
+Returns performance data including initialization times, search latencies, and execution stats:
+
+```json
+{
+  "init": {
+    "duration": 1234.56,
+    "serverCount": 6,
+    "toolCount": 42
+  },
+  "timers": {
+    "search.bm25": { "count": 15, "total": 45.2, "avg": 3.01, "min": 1.2, "max": 8.5 },
+    "search.regex": { "count": 5, "total": 12.1, "avg": 2.42, "min": 1.1, "max": 4.2 },
+    "tool.execute": { "count": 10, "total": 892.3, "avg": 89.23, "min": 12.5, "max": 245.8 }
+  },
+  "indexStats": {
+    "documentCount": 42,
+    "avgDocLength": 15.3
+  },
+  "config": {
+    "initMode": "eager",
+    "connectionTimeout": 5000,
+    "requestTimeout": 30000,
+    "retryAttempts": 2
+  }
+}
+```
 
 ## Search Modes
 
