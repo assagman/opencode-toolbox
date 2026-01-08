@@ -334,7 +334,7 @@ describe("toolbox_status execute", () => {
     
     expect(parsed.tools).toBeDefined();
     expect(typeof parsed.tools.total).toBe("number");
-    expect(typeof parsed.tools.available).toBe("number");
+    expect(typeof parsed.tools.indexed).toBe("number");
   });
 
   test("returns status object with health section", async () => {

@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { FakeMCPClient, FakeTools, FakeToolHandlers } from "../../src/mcp-client/fake";
+import { MCPManager } from "../../src/mcp-client/manager";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 describe("FakeMCPClient", () => {
@@ -183,5 +184,211 @@ describe("FakeToolHandlers", () => {
     expect(result.query).toBe("test query");
     expect(result.results).toHaveLength(2);
     expect(result.results[0]!.title).toContain("test query");
+  });
+});
+
+describe("MCPManager - Init States", () => {
+  test("starts in idle state", () => {
+    const manager = new MCPManager({
+      clientFactory: () => new FakeMCPClient({ tools: FakeTools.time }),
+    });
+    
+    expect(manager.getInitState()).toBe("idle");
+    expect(manager.isReady()).toBe(false);
+    expect(manager.isComplete()).toBe(false);
+  });
+
+  test("transitions to ready state on successful init", async () => {
+    const manager = new MCPManager({
+      clientFactory: () => new FakeMCPClient({ tools: FakeTools.time }),
+    });
+
+    await manager.initialize({ time: { type: "local" } });
+    
+    expect(manager.getInitState()).toBe("ready");
+    expect(manager.isReady()).toBe(true);
+    expect(manager.isComplete()).toBe(true);
+    
+    await manager.closeAll();
+  });
+
+  test("transitions to degraded state on partial failure", async () => {
+    let callCount = 0;
+    const manager = new MCPManager({
+      clientFactory: () => {
+        callCount++;
+        if (callCount === 1) {
+          return new FakeMCPClient({ tools: FakeTools.time });
+        }
+        return new FakeMCPClient({
+          tools: [],
+          failConnect: true,
+          errorMessage: "Connection failed",
+        });
+      },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 0,
+        retryDelay: 0,
+      },
+    });
+
+    await manager.initialize({
+      working: { type: "local" },
+      failing: { type: "local" },
+    });
+
+    expect(manager.getInitState()).toBe("degraded");
+    expect(manager.isReady()).toBe(true); // Still ready with partial servers
+    expect(manager.isComplete()).toBe(true);
+
+    await manager.closeAll();
+  });
+
+  test("emits server:connected events", async () => {
+    const manager = new MCPManager({
+      clientFactory: () => new FakeMCPClient({ tools: FakeTools.time }),
+    });
+
+    const connectedServers: string[] = [];
+    manager.on("server:connected", (name) => {
+      connectedServers.push(name);
+    });
+
+    await manager.initialize({
+      time: { type: "local" },
+      search: { type: "local" },
+    });
+
+    expect(connectedServers).toContain("time");
+    expect(connectedServers).toContain("search");
+
+    await manager.closeAll();
+  });
+
+  test("emits init:complete event", async () => {
+    const manager = new MCPManager({
+      clientFactory: () => new FakeMCPClient({ tools: FakeTools.time }),
+    });
+
+    let initState = "";
+    manager.on("init:complete", (state) => {
+      initState = state;
+    });
+
+    await manager.initialize({ time: { type: "local" } });
+
+    expect(initState).toBe("ready");
+
+    await manager.closeAll();
+  });
+
+  test("waitForPartial resolves when first server connects", async () => {
+    const manager = new MCPManager({
+      clientFactory: (name) => {
+        // Second server takes longer
+        const delay = name === "slow" ? 100 : 0;
+        return new FakeMCPClient({ tools: FakeTools.time, delay });
+      },
+    });
+
+    manager.initializeBackground({
+      fast: { type: "local" },
+      slow: { type: "local" },
+    });
+
+    const start = Date.now();
+    await manager.waitForPartial();
+    const duration = Date.now() - start;
+
+    // Should resolve quickly when first server connects
+    expect(duration).toBeLessThan(50);
+    expect(manager.isReady()).toBe(true);
+
+    // Wait for full init before cleanup
+    await manager.waitForReady();
+    await manager.closeAll();
+  });
+
+  test("background init does not block", async () => {
+    const manager = new MCPManager({
+      clientFactory: () => new FakeMCPClient({ tools: FakeTools.time, delay: 100 }),
+    });
+
+    const start = Date.now();
+    manager.initializeBackground({ time: { type: "local" } });
+    const duration = Date.now() - start;
+
+    // Should return immediately
+    expect(duration).toBeLessThan(10);
+
+    // Wait for completion before cleanup
+    await manager.waitForReady();
+    await manager.closeAll();
+  });
+});
+
+describe("MCPManager - Connection Retry", () => {
+  test("retries on connection failure", async () => {
+    let attempts = 0;
+    const manager = new MCPManager({
+      clientFactory: () => {
+        attempts++;
+        if (attempts < 2) {
+          return new FakeMCPClient({
+            tools: [],
+            failConnect: true,
+            errorMessage: "Temporary failure",
+          });
+        }
+        return new FakeMCPClient({ tools: FakeTools.time });
+      },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 2,
+        retryDelay: 10,
+      },
+    });
+
+    await manager.initialize({ time: { type: "local" } });
+
+    expect(attempts).toBe(2);
+    expect(manager.getInitState()).toBe("ready");
+
+    await manager.closeAll();
+  });
+
+  test("gives up after max retries", async () => {
+    let attempts = 0;
+    const manager = new MCPManager({
+      clientFactory: () => {
+        attempts++;
+        return new FakeMCPClient({
+          tools: [],
+          failConnect: true,
+          errorMessage: "Permanent failure",
+        });
+      },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 2,
+        retryDelay: 10,
+      },
+    });
+
+    await manager.initialize({ time: { type: "local" } });
+
+    // 1 initial + 2 retries = 3 attempts
+    expect(attempts).toBe(3);
+    expect(manager.getInitState()).toBe("degraded");
+
+    const server = manager.getServer("time");
+    expect(server?.status).toBe("error");
+    expect(server?.error).toBe("Permanent failure");
+
+    await manager.closeAll();
   });
 });

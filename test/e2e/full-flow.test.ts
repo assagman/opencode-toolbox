@@ -61,7 +61,7 @@ describe("E2E: Full Plugin Flow", () => {
     await mcpManager.closeAll();
   });
 
-  describe("Search → Execute Flow", () => {
+  describe("Search -> Execute Flow", () => {
     test("search for time tool and execute it", async () => {
       // Step 1: Search for time-related tools
       const searchResults = bm25Index.search("get current time timezone", 5);
@@ -208,6 +208,12 @@ describe("E2E: Server Connection Failures", () => {
           errorMessage: "Connection refused",
         });
       },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 0,
+        retryDelay: 0,
+      },
     });
 
     await mcpManager.initialize({
@@ -222,6 +228,8 @@ describe("E2E: Server Connection Failures", () => {
     // Tools list should be empty
     const tools = mcpManager.getAllCatalogTools();
     expect(tools.length).toBe(0);
+    
+    await mcpManager.closeAll();
   });
 
   test("handles listTools failure gracefully", async () => {
@@ -233,6 +241,12 @@ describe("E2E: Server Connection Failures", () => {
           errorMessage: "Server returned 500",
         });
       },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 0,
+        retryDelay: 0,
+      },
     });
 
     await mcpManager.initialize({
@@ -243,11 +257,15 @@ describe("E2E: Server Connection Failures", () => {
     expect(server).toBeDefined();
     expect(server!.status).toBe("error");
     expect(server!.error).toBe("Server returned 500");
+    
+    await mcpManager.closeAll();
   });
 
   test("partial failure - some servers work, some don't", async () => {
+    let serverCount = 0;
     const mcpManager = new MCPManager({
       clientFactory: (name, config) => {
+        serverCount++;
         if (name === "working") {
           return new FakeMCPClient({ tools: FakeTools.time });
         }
@@ -256,6 +274,12 @@ describe("E2E: Server Connection Failures", () => {
           failConnect: true,
           errorMessage: "Connection failed",
         });
+      },
+      connectionConfig: {
+        connectTimeout: 1000,
+        requestTimeout: 5000,
+        retryAttempts: 0,
+        retryDelay: 0,
       },
     });
 
@@ -273,6 +297,8 @@ describe("E2E: Server Connection Failures", () => {
     // Should still have tools from working server
     const tools = mcpManager.getAllCatalogTools();
     expect(tools.length).toBe(2); // time tools
+    
+    await mcpManager.closeAll();
   });
 });
 
@@ -289,6 +315,8 @@ describe("E2E: Search Result Format", () => {
     allTools = mcpManager.getAllCatalogTools();
     bm25Index = new BM25Index();
     bm25Index.indexTools(allTools);
+    
+    // Note: not closing here as tests need the data
   });
 
   test("BM25 results include all required fields", () => {
@@ -327,5 +355,142 @@ describe("E2E: Search Result Format", () => {
     // Signature should be like "get_current_time(timezone)"
     expect(results[0]!.signature).toContain("get_current_time");
     expect(results[0]!.signature).toContain("timezone");
+  });
+});
+
+describe("E2E: Progressive Loading", () => {
+  test("can index tools progressively as servers connect", async () => {
+    const bm25Index = new BM25Index();
+    const mcpManager = new MCPManager({
+      clientFactory: (name) => {
+        if (name === "time") {
+          return new FakeMCPClient({ tools: FakeTools.time });
+        }
+        return new FakeMCPClient({ tools: FakeTools.calculator });
+      },
+    });
+
+    // Set up progressive loading
+    mcpManager.on("server:connected", (_, tools) => {
+      bm25Index.addToolsBatch(tools);
+    });
+
+    // Initialize in background
+    mcpManager.initializeBackground({
+      time: { type: "local" },
+      calculator: { type: "local" },
+    });
+
+    // Wait for at least partial readiness
+    await mcpManager.waitForPartial();
+
+    // Should have some tools indexed already
+    expect(bm25Index.size).toBeGreaterThan(0);
+
+    // Wait for full init
+    await mcpManager.waitForReady();
+
+    // Should have all tools now
+    expect(bm25Index.size).toBe(4); // 2 time + 2 calculator
+
+    await mcpManager.closeAll();
+  });
+
+  test("search works during progressive loading", async () => {
+    const bm25Index = new BM25Index();
+    const mcpManager = new MCPManager({
+      clientFactory: (name) => {
+        // Time server is fast, calculator is slower
+        const delay = name === "time" ? 0 : 50;
+        if (name === "time") {
+          return new FakeMCPClient({ tools: FakeTools.time, delay });
+        }
+        return new FakeMCPClient({ tools: FakeTools.calculator, delay });
+      },
+    });
+
+    mcpManager.on("server:connected", (_, tools) => {
+      bm25Index.addToolsBatch(tools);
+    });
+
+    mcpManager.initializeBackground({
+      time: { type: "local" },
+      calculator: { type: "local" },
+    });
+
+    await mcpManager.waitForPartial();
+
+    // Search should work with partial index
+    const results = bm25Index.search("time", 5);
+    expect(results.length).toBeGreaterThan(0);
+
+    await mcpManager.waitForReady();
+    await mcpManager.closeAll();
+  });
+});
+
+describe("E2E: Async Indexing", () => {
+  test("async indexing produces same results as sync", async () => {
+    const tools = FakeTools.time.map((t, i) => ({
+      id: { server: "test", name: t.name },
+      idString: `test_${t.name}` as const,
+      description: t.description || "",
+      inputSchema: t.inputSchema as Record<string, unknown>,
+      searchableText: `test_${t.name} ${t.name} ${t.description || ""}`,
+      args: [],
+    }));
+
+    const syncIndex = new BM25Index();
+    syncIndex.indexTools(tools);
+
+    const asyncIndex = new BM25Index();
+    await asyncIndex.indexToolsAsync(tools, 1);
+
+    // Both should have same size
+    expect(asyncIndex.size).toBe(syncIndex.size);
+
+    // Both should return same search results
+    const syncResults = syncIndex.search("time", 5);
+    const asyncResults = asyncIndex.search("time", 5);
+
+    expect(asyncResults.length).toBe(syncResults.length);
+    expect(asyncResults[0]?.idString).toBe(syncResults[0]?.idString);
+  });
+
+  test("incremental add maintains search quality", () => {
+    const bm25Index = new BM25Index();
+    
+    // Add first batch
+    const timeTools = FakeTools.time.map((t) => ({
+      id: { server: "time", name: t.name },
+      idString: `time_${t.name}` as const,
+      description: t.description || "",
+      inputSchema: t.inputSchema as Record<string, unknown>,
+      searchableText: `time_${t.name} ${t.name} ${t.description || ""}`,
+      args: [],
+    }));
+    bm25Index.addToolsBatch(timeTools);
+    
+    // Verify time tools are searchable
+    let results = bm25Index.search("time", 5);
+    expect(results.length).toBe(2);
+    
+    // Add second batch
+    const calcTools = FakeTools.calculator.map((t) => ({
+      id: { server: "calc", name: t.name },
+      idString: `calc_${t.name}` as const,
+      description: t.description || "",
+      inputSchema: t.inputSchema as Record<string, unknown>,
+      searchableText: `calc_${t.name} ${t.name} ${t.description || ""}`,
+      args: [],
+    }));
+    bm25Index.addToolsBatch(calcTools);
+    
+    // Verify both sets are searchable
+    results = bm25Index.search("add", 5);
+    expect(results.some(r => r.idString === "calc_add")).toBe(true);
+    
+    results = bm25Index.search("time", 5);
+    expect(results.length).toBeGreaterThan(0);
   });
 });
