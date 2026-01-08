@@ -181,6 +181,7 @@ ${Object.entries(toolboxSchema).map(([server, tools]) => `- ${server}: ${tools.m
  * - toolbox_perf: Get performance metrics
  */
 export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
+  const pluginLoadStart = performance.now();
   const { client } = ctx;
 
   // Load configuration
@@ -218,11 +219,14 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
   // Log successful config load - non-blocking, file only
   const serverNames = Object.keys(config.mcp);
+  const pluginLoadDuration = performance.now() - pluginLoadStart;
   log("info", `Toolbox plugin loaded successfully`, {
     configPath,
+    logPath: LOG_FILE_PATH,
     serverCount: serverNames.length,
     servers: serverNames,
     initMode,
+    loadDurationMs: Math.round(pluginLoadDuration * 100) / 100,
   });
 
   /**
