@@ -93,10 +93,18 @@ const PERF_DESC = `Get detailed performance metrics for the toolbox plugin.
 Shows initialization times, search latencies, execution stats, and per-server metrics.`;
 
 /**
+ * Check if running in test environment
+ */
+const isTestEnv = process.env.NODE_ENV === "test" || !!process.env.BUN_TEST;
+
+/**
  * Safe logging helper - writes to ~/.local/share/opencode/toolbox.log
- * Never blocks or throws
+ * Never blocks or throws. Skips logging in test environment.
  */
 function log(level: string, message: string, extra?: any) {
+  // Skip logging in test environment
+  if (isTestEnv) return;
+
   const timestamp = new Date().toISOString();
   const extraStr = extra ? ` ${JSON.stringify(extra)}` : "";
   const line = `${timestamp} [${level.toUpperCase()}] ${message}${extraStr}\n`;
@@ -111,9 +119,12 @@ function log(level: string, message: string, extra?: any) {
 
 /**
  * Create /toolbox-status slash command if it doesn't exist
- * Non-blocking, fire and forget
+ * Non-blocking, fire and forget. Skips in test environment.
  */
 function ensureCommandFile() {
+  // Skip in test environment
+  if (isTestEnv) return;
+
   access(COMMAND_FILE_PATH).catch(() => {
     // File doesn't exist, create it
     mkdir(COMMAND_DIR, { recursive: true })
