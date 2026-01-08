@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-08
+
+### Fixed
+- **Reverted auto-update**: Removed command file version tracking that caused OpenCode launch delays
+
 ## [0.5.0] - 2026-01-08
 
 ### Added
 - **Observability**: Dedicated log file at `~/.local/share/opencode/toolbox.log`
 - **Status Tool**: New `toolbox_status` tool for checking plugin and server health
 - **Slash Command**: Auto-creates `/toolbox-status` command on first launch
-- **Auto-Update Command**: Slash command file auto-updates when plugin version changes
 - **Health Metrics**: Track search count, execution count, and success rate
 - **Server Connection Tracking**: Log MCP server initialization and connection status
 - **Error Logging**: Detailed error messages for failed operations
@@ -19,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tests**: Comprehensive test suite for `toolbox_status` tool (9 new tests)
 
 ### Changed
-- Version now imported from package.json (single source of truth)
 - Updated README with observability section and logging documentation
 - Added troubleshooting guidance using `toolbox_status` and logs
 - Silent logging (no screen output) to prevent UI flickering
