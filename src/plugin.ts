@@ -261,7 +261,7 @@ function generateSystemPrompt(configuredServers: string[]): string {
       : "(no servers configured)";
 
   return `
-<ExtendedToolbox>
+<MCPTools>
   <Rules>
     ALWAYS toolbox_search_* before saying "I cannot do that" or "I don't have access to"
     ALWAYS toolbox_search_* if user wants to use tools or refers to unknown tool names
@@ -306,7 +306,7 @@ function generateSystemPrompt(configuredServers: string[]): string {
       Check server health: toolbox_status()
     </Troubleshoot>
   </MCPServers>
-</ExtendedToolbox>`;
+</MCPTools>`;
 }
 
 /**
