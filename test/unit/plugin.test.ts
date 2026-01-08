@@ -138,8 +138,8 @@ describe("toolbox_execute schema", () => {
     expect(executeTool.description).toContain("JSON string");
   });
 
-  test("has name parameter", () => {
-    expect(executeTool.args.name).toBeDefined();
+  test("has toolId parameter", () => {
+    expect(executeTool.args.toolId).toBeDefined();
   });
 
   test("has arguments parameter", () => {
@@ -171,11 +171,12 @@ describe("toolbox_search_bm25 execute", () => {
     expect(parsed.tools).toEqual([]);
   });
 
-  test("search returns usage hint for toolbox_execute", async () => {
+  test("search returns usage hint for toolbox_execute with toolId", async () => {
     const result = await bm25Tool.execute({ text: "time" }, {} as any);
     const parsed = JSON.parse(result);
     
     expect(parsed.usage).toContain("toolbox_execute");
+    expect(parsed.usage).toContain("toolId");
   });
 });
 
@@ -229,19 +230,19 @@ describe("toolbox_execute execute", () => {
     executeTool = hooks.tool?.toolbox_execute;
   });
 
-  test("execute with invalid name format returns error", async () => {
+  test("execute with invalid toolId format returns error", async () => {
     const result = await executeTool.execute({ 
-      name: "invalidname"  // No underscore
+      toolId: "invalidtoolid"  // No underscore
     }, {} as any);
     const parsed = JSON.parse(result);
     
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toContain("Invalid tool name format");
+    expect(parsed.error).toContain("Invalid toolId format");
   });
 
   test("execute with invalid JSON arguments returns error", async () => {
     const result = await executeTool.execute({ 
-      name: "server_tool",
+      toolId: "server_tool",
       arguments: "not valid json"
     }, {} as any);
     const parsed = JSON.parse(result);
@@ -252,7 +253,7 @@ describe("toolbox_execute execute", () => {
 
   test("execute with non-existent server returns error", async () => {
     const result = await executeTool.execute({ 
-      name: "nonexistent_tool",
+      toolId: "nonexistent_tool",
       arguments: "{}"
     }, {} as any);
     const parsed = JSON.parse(result);

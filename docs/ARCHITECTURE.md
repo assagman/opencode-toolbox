@@ -74,7 +74,7 @@ With Toolbox plugin, LLM sees only essential tools:
       }
     },
     { "name": "toolbox_execute", "description": "Execute a discovered tool", "parameters": {
-        "name": { "type": "string" },
+        "toolId": { "type": "string" },
         "arguments": { "type": "string" }
       }
     }
@@ -175,12 +175,12 @@ With Toolbox plugin, LLM sees only essential tools:
     │                             │ Tokyo = "Asia/Tokyo"         │
     │                             │                              │
     │                             │ toolbox_execute({            │
-    │                             │   name: "time_get_current_time",
+    │                             │   toolId: "time_get_current_time",
     │                             │   arguments: '{"timezone":"Asia/Tokyo"}'
     │                             │ })                           │
     │                             │─────────────────────────────►│
     │                             │                              │
-    │                             │                              │ Parse name
+    │                             │                              │ Parse toolId
     │                             │                              │ → server: "time"
     │                             │                              │ → tool: "get_current_time"
     │                             │                              │
@@ -240,12 +240,12 @@ With Toolbox plugin, LLM sees only essential tools:
 {
   "name": "toolbox_execute",
   "arguments": {
-    "name": "time_get_current_time",
+    "toolId": "time_get_current_time",
     "arguments": "{\"timezone\":\"Asia/Tokyo\"}"
   }
 }
 
-// Toolbox parses name: "time_get_current_time" → server="time", tool="get_current_time"
+// Toolbox parses toolId: "time_get_current_time" → server="time", tool="get_current_time"
 // Toolbox calls MCP server and returns result
 ```
 

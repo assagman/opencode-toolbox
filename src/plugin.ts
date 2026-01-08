@@ -61,7 +61,7 @@ function formatSearchResults(
       };
     }),
     usage:
-      "Use toolbox_execute({ name: '<tool_name>', arguments: '<json>' }) to run a discovered tool",
+      "Use toolbox_execute({ toolId: '<toolId>', arguments: '<json>' }) to run a discovered tool",
   };
 
   return JSON.stringify(output, null, 2);
@@ -82,7 +82,8 @@ Returns tools with schemas. Use toolbox_execute() to run them.`;
 
 const EXECUTE_DESC = `Execute a tool discovered via toolbox_search_bm25 or toolbox_search_regex.
 
-Pass arguments as JSON string matching the tool's schema.`;
+Pass arguments as JSON string matching the tool's schema.
+toolId format: {serverName}_{toolName}`;
 
 const STATUS_DESC = `Get toolbox status including plugin initialization, MCP server connections, and tool counts.
 
@@ -103,70 +104,85 @@ Executes every registered tool with super simple inputs to verify they work. Ret
  */
 const TEST_PROMPTS: Record<string, Record<string, unknown>> = {
   // Time tools
-  "time_get_current_time": {},
-  "time_convert_time": { source_timezone: "UTC", time: "12:00", target_timezone: "America/New_York" },
-  
+  time_get_current_time: {},
+  time_convert_time: {
+    source_timezone: "UTC",
+    time: "12:00",
+    target_timezone: "America/New_York",
+  },
+
   // Brave search tools - minimal queries
-  "brave_brave_web_search": { query: "test", count: 1 },
-  "brave_brave_local_search": { query: "coffee", count: 1 },
-  "brave_brave_video_search": { query: "test", count: 1 },
-  "brave_brave_image_search": { query: "test", count: 1 },
-  "brave_brave_news_search": { query: "test", count: 1 },
-  "brave_brave_summarizer": { key: "test" },
-  
+  brave_brave_web_search: { query: "test", count: 1 },
+  brave_brave_local_search: { query: "coffee", count: 1 },
+  brave_brave_video_search: { query: "test", count: 1 },
+  brave_brave_image_search: { query: "test", count: 1 },
+  brave_brave_news_search: { query: "test", count: 1 },
+  brave_brave_summarizer: { key: "test" },
+
   // Brightdata tools
-  "brightdata_search_engine": { query: "hello", engine: "google", count: 1 },
-  "brightdata_search_engine_batch": { queries: [{ query: "test", engine: "google", count: 1 }] },
-  "brightdata_scrape_as_markdown": { url: "https://example.com" },
-  "brightdata_scrape_as_html": { url: "https://example.com" },
-  "brightdata_scrape_batch": { urls: ["https://example.com"] },
-  "brightdata_extract": { url: "https://example.com" },
-  "brightdata_session_stats": {},
-  "brightdata_web_data_reuter_news": { url: "https://www.reuters.com/technology/" },
-  "brightdata_web_data_github_repository_file": { url: "https://github.com/octocat/Hello-World/blob/master/README" },
-  
+  brightdata_search_engine: { query: "hello", engine: "google", count: 1 },
+  brightdata_search_engine_batch: {
+    queries: [{ query: "test", engine: "google", count: 1 }],
+  },
+  brightdata_scrape_as_markdown: { url: "https://example.com" },
+  brightdata_scrape_as_html: { url: "https://example.com" },
+  brightdata_scrape_batch: { urls: ["https://example.com"] },
+  brightdata_extract: { url: "https://example.com" },
+  brightdata_session_stats: {},
+  brightdata_web_data_reuter_news: {
+    url: "https://www.reuters.com/technology/",
+  },
+  brightdata_web_data_github_repository_file: {
+    url: "https://github.com/octocat/Hello-World/blob/master/README",
+  },
+
   // Tavily tools - minimal queries
   "tavily_tavily-search": { query: "test", maxResults: 1 },
   "tavily_tavily-extract": { urls: ["https://example.com"] },
   "tavily_tavily-map": { url: "https://example.com" },
-  
+
   // Context7 tools
   "context7_resolve-library-id": { libraryName: "react" },
-  
+
   // Octocode GitHub tools - minimal queries
-  "octocode_githubSearchRepositories": { query: "test", maxResults: 1 },
-  "octocode_githubSearchCode": { query: "function test", maxResults: 1 },
-  "octocode_githubViewRepoStructure": { owner: "octocat", repo: "Hello-World" },
-  
+  octocode_githubSearchRepositories: { query: "test", maxResults: 1 },
+  octocode_githubSearchCode: { query: "function test", maxResults: 1 },
+  octocode_githubViewRepoStructure: { owner: "octocat", repo: "Hello-World" },
+
   // Perplexity tools - minimal queries
-  "perplexity_perplexity_ask": { query: "What is 1+1?" },
-  "perplexity_perplexity_search": { query: "test", maxResults: 1 },
+  perplexity_perplexity_ask: { query: "What is 1+1?" },
+  perplexity_perplexity_search: { query: "test", maxResults: 1 },
 };
 
 /**
  * Generate minimal arguments from a JSON schema
  * Used as fallback when no predefined test prompt exists
  */
-function generateMinimalArgs(schema: Record<string, unknown>): Record<string, unknown> {
+function generateMinimalArgs(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
   const args: Record<string, unknown> = {};
-  
+
   if (schema.type !== "object" || !schema.properties) {
     return args;
   }
-  
-  const properties = schema.properties as Record<string, Record<string, unknown>>;
+
+  const properties = schema.properties as Record<
+    string,
+    Record<string, unknown>
+  >;
   const required = (schema.required as string[]) || [];
-  
+
   // Only fill in required properties with minimal values
   for (const propName of required) {
     const prop = properties[propName];
     if (!prop) continue;
-    
+
     const enumValues = prop.enum as unknown[] | undefined;
-    
+
     switch (prop.type) {
       case "string":
-        args[propName] = prop.default ?? (enumValues?.[0]) ?? "test";
+        args[propName] = prop.default ?? enumValues?.[0] ?? "test";
         break;
       case "number":
       case "integer":
@@ -185,7 +201,7 @@ function generateMinimalArgs(schema: Record<string, unknown>): Record<string, un
         args[propName] = prop.default ?? null;
     }
   }
-  
+
   return args;
 }
 
@@ -234,34 +250,63 @@ function ensureCommandFile() {
 }
 
 /**
- * System prompt injection - concise instructions for tool search
- */
-const SYSTEM_PROMPT_BASE = `# Extended Toolbox
-
-You have access to an extended toolbox with additional capabilities (web search, time utilities, code search, etc.).
-
-## Rules
-1. ALWAYS toolbox_search_* before saying "I cannot do that" or "I don't have access to."
-2. ALWAYS toolbox_search_* if you think that user wants you to use some tools
-3. ALWAYS toolbox_search_* if you think that user may refer specific tool name which is not exist in the context
-
-## Workflow
-1. Search: toolbox_search_bm25({ text: "what you need" }) or toolbox_search_regex({ pattern: "prefix_.*" })
-2. Execute: toolbox_execute({ name: "tool_name", arguments: '{"key": "value"}' })`;
-
-/**
  * Generate system prompt with configured MCP server names
  * Server names come from config (instant) - no need to wait for connections
+ * Uses XML format for token-efficient AI parsing
  */
 function generateSystemPrompt(configuredServers: string[]): string {
-  if (configuredServers.length === 0) {
-    return SYSTEM_PROMPT_BASE;
-  }
+  const registry =
+    configuredServers.length > 0
+      ? configuredServers.map((s) => `${s}_*`).join("\n")
+      : "(no servers configured)";
 
-  return `${SYSTEM_PROMPT_BASE}
-
-## Registered MCP Servers
-- ${configuredServers.join(", ")}`;
+  return `
+<ExtendedToolbox>
+  <Rules>
+    ALWAYS toolbox_search_* before saying "I cannot do that" or "I don't have access to"
+    ALWAYS toolbox_search_* if user wants to use tools or refers to unknown tool names
+  </Rules>
+  <MCPServers>
+    <Registry>
+      ${registry}
+    </Registry>
+    <NamingConvention>
+      serverName: MCP server name
+      toolName: tool name provided by MCP server
+      toolId: {serverName}_{toolName}
+    </NamingConvention>
+    <Patterns>
+      ALL: ".*"
+      SERVER: "{serverName}_.*"
+      TOOL: "{serverName}_{toolName}"
+    </Patterns>
+    <Discovery>
+      <ListAllTools>
+        toolbox_search_regex({ pattern: ".*" })
+      </ListAllTools>
+      <ServerTools>
+        toolbox_search_regex({ pattern: "serverName_.*" })
+      </ServerTools>
+      <FreeSearch>
+        toolbox_search_bm25({ text: "description keywords" })
+      </FreeSearch>
+    </Discovery>
+    <Execute>
+      toolbox_execute({ toolId: "toolId", arguments: '{}' })
+    </Execute>
+    <When>
+      regex: know server name or partial tool name
+      bm25: know what you want to do, not tool name
+    </When>
+    <Fallback>
+      toolbox_search_regex → toolbox_search_bm25 → toolbox_status → ask user
+    </Fallback>
+    <Troubleshoot>
+      If tool not found: check server prefix, try bm25 with descriptive text
+      Check server health: toolbox_status()
+    </Troubleshoot>
+  </MCPServers>
+</ExtendedToolbox>`;
 }
 
 /**
@@ -326,15 +371,21 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
   /**
    * Set up progressive tool loading - index tools as servers connect
    */
-  mcpManager.on("server:connected", (serverName: string, tools: CatalogTool[]) => {
-    const startTime = performance.now();
-    bm25Index.addToolsBatch(tools);
-    const indexTime = performance.now() - startTime;
-    
-    globalProfiler.recordIncrementalUpdate(tools.length);
-    
-    log("info", `Server ${serverName} connected, indexed ${tools.length} tools in ${indexTime.toFixed(2)}ms`);
-  });
+  mcpManager.on(
+    "server:connected",
+    (serverName: string, tools: CatalogTool[]) => {
+      const startTime = performance.now();
+      bm25Index.addToolsBatch(tools);
+      const indexTime = performance.now() - startTime;
+
+      globalProfiler.recordIncrementalUpdate(tools.length);
+
+      log(
+        "info",
+        `Server ${serverName} connected, indexed ${tools.length} tools in ${indexTime.toFixed(2)}ms`,
+      );
+    },
+  );
 
   mcpManager.on("server:error", (serverName: string, error: string) => {
     log("warn", `Server ${serverName} failed: ${error}`);
@@ -344,13 +395,17 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
     const duration = globalProfiler.getInitDuration();
     const servers = mcpManager.getAllServers();
     const connectedServers = servers.filter((s) => s.status === "connected");
-    
-    log("info", `Initialization complete in ${duration?.toFixed(2)}ms: ${connectedServers.length}/${servers.length} servers, ${bm25Index.size} tools indexed`, {
-      state,
-      totalServers: servers.length,
-      connectedServers: connectedServers.length,
-      totalTools: bm25Index.size,
-    });
+
+    log(
+      "info",
+      `Initialization complete in ${duration?.toFixed(2)}ms: ${connectedServers.length}/${servers.length} servers, ${bm25Index.size} tools indexed`,
+      {
+        state,
+        totalServers: servers.length,
+        connectedServers: connectedServers.length,
+        totalTools: bm25Index.size,
+      },
+    );
   });
 
   /**
@@ -406,7 +461,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
         async execute(args) {
           const timer = globalProfiler.startTimer("search.bm25");
-          
+
           try {
             await ensureInitialized();
           } catch (error) {
@@ -460,7 +515,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
         async execute(args) {
           const timer = globalProfiler.startTimer("search.regex");
-          
+
           try {
             await ensureInitialized();
           } catch (error) {
@@ -512,10 +567,10 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
         description: EXECUTE_DESC,
 
         args: {
-          name: tool.schema
+          toolId: tool.schema
             .string()
             .describe(
-              "Full tool name from search results (e.g., 'time_get_current_time', 'exa_web_search')",
+              "Tool ID from search results. Format: {serverName}_{toolName} (e.g., 'time_get_current_time', 'brave_web_search')",
             ),
           arguments: tool.schema
             .string()
@@ -527,7 +582,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
         async execute(args) {
           const timer = globalProfiler.startTimer("tool.execute");
-          
+
           try {
             await ensureInitialized();
           } catch (error) {
@@ -538,16 +593,16 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             });
           }
 
-          // Parse tool name to get server and original tool name
-          const parsed = parseToolName(args.name);
+          // Parse toolId to get server and original tool name
+          const parsed = parseToolName(args.toolId);
           if (!parsed) {
             timer();
-            log("warn", `Invalid tool name format: ${args.name}`, {
-              toolName: args.name,
+            log("warn", `Invalid toolId format: ${args.toolId}`, {
+              toolId: args.toolId,
             });
             return JSON.stringify({
               success: false,
-              error: `Invalid tool name format: ${args.name}. Expected format: serverName_toolName (e.g., 'time_get_current_time')`,
+              error: `Invalid toolId format: ${args.toolId}. Expected format: {serverName}_{toolName} (e.g., 'time_get_current_time')`,
             });
           }
 
@@ -560,9 +615,9 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
               timer();
               log(
                 "warn",
-                `Failed to parse arguments as JSON for ${args.name}`,
+                `Failed to parse arguments as JSON for ${args.toolId}`,
                 {
-                  toolName: args.name,
+                  toolId: args.toolId,
                   arguments: args.arguments,
                 },
               );
@@ -585,11 +640,15 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
             const duration = timer();
             executionSuccessCount++;
 
-            log("info", `Tool executed successfully: ${args.name} in ${duration.toFixed(2)}ms`, {
-              server: parsed.serverName,
-              tool: parsed.toolName,
-              durationMs: duration,
-            });
+            log(
+              "info",
+              `Tool executed successfully: ${args.toolId} in ${duration.toFixed(2)}ms`,
+              {
+                server: parsed.serverName,
+                tool: parsed.toolName,
+                durationMs: duration,
+              },
+            );
 
             return JSON.stringify({
               success: true,
@@ -724,17 +783,21 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
         async execute() {
           const report = globalProfiler.export();
-          
-          return JSON.stringify({
-            ...report,
-            indexStats: bm25Index.getStats(),
-            config: {
-              initMode,
-              connectionTimeout: connectionConfig.connectTimeout,
-              requestTimeout: connectionConfig.requestTimeout,
-              retryAttempts: connectionConfig.retryAttempts,
+
+          return JSON.stringify(
+            {
+              ...report,
+              indexStats: bm25Index.getStats(),
+              config: {
+                initMode,
+                connectionTimeout: connectionConfig.connectTimeout,
+                requestTimeout: connectionConfig.requestTimeout,
+                retryAttempts: connectionConfig.retryAttempts,
+              },
             },
-          }, null, 2);
+            null,
+            2,
+          );
         },
       }),
 
@@ -756,105 +819,125 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
         async execute(args) {
           const startTime = performance.now();
           const output: string[] = [];
-          
-          output.push("=" .repeat(80));
+
+          output.push("=".repeat(80));
           output.push("TOOLBOX TEST - Full Execution Log");
-          output.push("=" .repeat(80));
+          output.push("=".repeat(80));
           output.push("");
-          
+
           try {
             await ensureInitialized();
           } catch (error) {
-            output.push(`[FATAL] Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
+            output.push(
+              `[FATAL] Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
+            );
             return output.join("\n");
           }
 
           const allTools = mcpManager.getAllCatalogTools();
           const timeout = args.timeout || 10000;
-          
+
           output.push(`[INFO] Found ${allTools.length} tools to test`);
           output.push(`[INFO] Timeout per tool: ${timeout}ms`);
           output.push(`[INFO] Started at: ${new Date().toISOString()}`);
           output.push("");
-          
+
           // Track results for summary
           let passed = 0;
           let failed = 0;
           let timedOut = 0;
           let skipped = 0;
-          
+
           // Execute tools sequentially to show clear step-by-step progress
           for (let i = 0; i < allTools.length; i++) {
             const catalogTool = allTools[i]!;
             const toolId = catalogTool.idString;
             const testNum = i + 1;
-            
+
             output.push("-".repeat(80));
             output.push(`[TEST ${testNum}/${allTools.length}] ${toolId}`);
             output.push("-".repeat(80));
-            
+
             const parsed = parseToolName(toolId);
-            
+
             if (!parsed) {
               output.push(`[SKIP] Invalid tool name format`);
               output.push("");
               skipped++;
               continue;
             }
-            
+
             output.push(`[INFO] Server: ${parsed.serverName}`);
             output.push(`[INFO] Tool: ${parsed.toolName}`);
-            output.push(`[INFO] Description: ${catalogTool.description || "(no description)"}`);
+            output.push(
+              `[INFO] Description: ${catalogTool.description || "(no description)"}`,
+            );
             output.push("");
-            
+
             // Determine test arguments
             let testArgs: Record<string, unknown>;
             let argsSource: string;
-            
+
             const predefinedArgs = TEST_PROMPTS[toolId];
             if (predefinedArgs !== undefined) {
               testArgs = predefinedArgs;
               argsSource = "PREDEFINED";
             } else {
               testArgs = generateMinimalArgs(catalogTool.inputSchema);
-              argsSource = Object.keys(testArgs).length > 0 ? "GENERATED" : "EMPTY";
+              argsSource =
+                Object.keys(testArgs).length > 0 ? "GENERATED" : "EMPTY";
             }
-            
+
             output.push(`[INPUT] Arguments source: ${argsSource}`);
             output.push(`[INPUT] Request payload:`);
-            output.push(JSON.stringify(testArgs, null, 2).split("\n").map(line => "        " + line).join("\n"));
+            output.push(
+              JSON.stringify(testArgs, null, 2)
+                .split("\n")
+                .map((line) => "        " + line)
+                .join("\n"),
+            );
             output.push("");
-            
+
             // Execute with timeout
             const toolStart = performance.now();
-            
+
             try {
               const timeoutPromise = new Promise<never>((_, reject) => {
                 setTimeout(() => reject(new Error("TIMEOUT")), timeout);
               });
-              
+
               const execPromise = mcpManager.callTool(
                 parsed.serverName,
                 parsed.toolName,
                 testArgs,
               );
-              
+
               const result = await Promise.race([execPromise, timeoutPromise]);
               const duration = Math.round(performance.now() - toolStart);
-              
+
               output.push(`[OUTPUT] Response received in ${duration}ms:`);
-              const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-              output.push(resultStr.split("\n").map(line => "        " + line).join("\n"));
+              const resultStr =
+                typeof result === "string"
+                  ? result
+                  : JSON.stringify(result, null, 2);
+              output.push(
+                resultStr
+                  .split("\n")
+                  .map((line) => "        " + line)
+                  .join("\n"),
+              );
               output.push("");
               output.push(`[PASS] ✓ Test passed in ${duration}ms`);
               passed++;
-              
             } catch (error) {
               const duration = Math.round(performance.now() - toolStart);
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              
+              const errorMsg =
+                error instanceof Error ? error.message : String(error);
+
               if (errorMsg === "TIMEOUT") {
-                output.push(`[OUTPUT] No response - timed out after ${timeout}ms`);
+                output.push(
+                  `[OUTPUT] No response - timed out after ${timeout}ms`,
+                );
                 output.push("");
                 output.push(`[TIMEOUT] ✗ Test timed out after ${duration}ms`);
                 timedOut++;
@@ -867,15 +950,16 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
                 failed++;
               }
             }
-            
+
             output.push("");
           }
-          
+
           // Final summary
           const totalDuration = Math.round(performance.now() - startTime);
           const total = allTools.length;
-          const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-          
+          const successRate =
+            total > 0 ? Math.round((passed / total) * 100) : 0;
+
           output.push("=".repeat(80));
           output.push("TEST SUMMARY");
           output.push("=".repeat(80));
@@ -891,15 +975,19 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
           output.push(`Finished at:    ${new Date().toISOString()}`);
           output.push("");
           output.push("=".repeat(80));
-          
-          log("info", `Toolbox test completed: ${passed}/${total} passed in ${totalDuration}ms`, {
-            passed,
-            failed,
-            timedOut,
-            skipped,
-            total,
-          });
-          
+
+          log(
+            "info",
+            `Toolbox test completed: ${passed}/${total} passed in ${totalDuration}ms`,
+            {
+              passed,
+              failed,
+              timedOut,
+              skipped,
+              total,
+            },
+          );
+
           return output.join("\n");
         },
       }),

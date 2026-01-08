@@ -114,16 +114,16 @@ Both search tools return tool schemas so the LLM knows exact parameters:
       }
     }
   ],
-  "usage": "Use toolbox_execute({ name: '<tool_name>', arguments: '<json>' }) to run a discovered tool"
+  "usage": "Use toolbox_execute({ toolId: '<toolId>', arguments: '<json>' }) to run a discovered tool"
 }
 ```
 
 ### toolbox_execute
 
-Execute a discovered tool with JSON-encoded arguments:
+Execute a discovered tool with JSON-encoded arguments. The `toolId` format is `{serverName}_{toolName}`:
 
 ```
-toolbox_execute({ name: "time_get_current_time", arguments: '{"timezone": "Asia/Tokyo"}' })
+toolbox_execute({ toolId: "time_get_current_time", arguments: '{"timezone": "Asia/Tokyo"}' })
 ```
 
 ## Example Flow
@@ -137,7 +137,7 @@ LLM: I need to find a time-related tool.
 Toolbox: Returns time_get_current_time with its schema
 
 LLM: Now I know the parameters. Let me call it.
-     toolbox_execute({ name: "time_get_current_time", arguments: '{"timezone":"Asia/Tokyo"}' })
+     toolbox_execute({ toolId: "time_get_current_time", arguments: '{"timezone":"Asia/Tokyo"}' })
 
 Toolbox: { "datetime": "2026-01-07T02:15:00+09:00", "timezone": "Asia/Tokyo" }
 
@@ -377,7 +377,7 @@ This shows:
 ### Execute fails
 
 1. Run `toolbox_status({})` to check server health
-2. Verify tool name format: `serverName_toolName`
+2. Verify `toolId` format: `{serverName}_{toolName}`
 3. Check `arguments` is valid JSON
 4. Ensure underlying MCP server is running and connected
 5. Check logs for detailed error messages
