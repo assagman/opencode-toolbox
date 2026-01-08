@@ -20,9 +20,18 @@ Add `opencode-toolbox` to your `~/.config/opencode/opencode.jsonc`:
 
 ```jsonc
 {
-  "plugin": ["opencode-toolbox"]
+  "plugin": ["opencode-toolbox@x.y.z"]
 }
 ```
+
+> **⚡ Performance Tip:** Always pin to a specific version for instant startup.
+>
+> | Configuration | Startup Time | Why |
+> |---------------|--------------|-----|
+> | ✅ `opencode-toolbox@x.y.z` | ~0ms | Cached version matches, skips npm check |
+> | ❌ `opencode-toolbox` | ~1000ms | Resolves "latest" via npm on every startup |
+>
+> OpenCode caches plugins by exact version. When you omit the version, it defaults to `"latest"` which doesn't match the cached resolved version, triggering a fresh `bun add` on every startup. Check [npm](https://www.npmjs.com/package/opencode-toolbox) for the latest version.
 
 ### 2. Configure Toolbox
 
