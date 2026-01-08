@@ -92,6 +92,103 @@ const PERF_DESC = `Get detailed performance metrics for the toolbox plugin.
 
 Shows initialization times, search latencies, execution stats, and per-server metrics.`;
 
+const TEST_DESC = `Test all toolbox tools with minimal predefined prompts.
+
+Executes every registered tool with super simple inputs to verify they work. Returns pass/fail for each tool.`;
+
+/**
+ * Predefined minimal test prompts for known tools
+ * Format: toolIdString -> minimal arguments object
+ * These should produce minimal output while verifying the tool works
+ */
+const TEST_PROMPTS: Record<string, Record<string, unknown>> = {
+  // Time tools
+  "time_get_current_time": {},
+  "time_convert_time": { source_timezone: "UTC", time: "12:00", target_timezone: "America/New_York" },
+  
+  // Brave search tools - minimal queries
+  "brave_brave_web_search": { query: "test", count: 1 },
+  "brave_brave_local_search": { query: "coffee", count: 1 },
+  "brave_brave_video_search": { query: "test", count: 1 },
+  "brave_brave_image_search": { query: "test", count: 1 },
+  "brave_brave_news_search": { query: "test", count: 1 },
+  "brave_brave_summarizer": { key: "test" },
+  
+  // Brightdata tools
+  "brightdata_search_engine": { query: "hello", engine: "google", count: 1 },
+  "brightdata_search_engine_batch": { queries: [{ query: "test", engine: "google", count: 1 }] },
+  "brightdata_scrape_as_markdown": { url: "https://example.com" },
+  "brightdata_scrape_as_html": { url: "https://example.com" },
+  "brightdata_scrape_batch": { urls: ["https://example.com"] },
+  "brightdata_extract": { url: "https://example.com" },
+  "brightdata_session_stats": {},
+  "brightdata_web_data_reuter_news": { url: "https://www.reuters.com/technology/" },
+  "brightdata_web_data_github_repository_file": { url: "https://github.com/octocat/Hello-World/blob/master/README" },
+  
+  // Tavily tools - minimal queries
+  "tavily_tavily-search": { query: "test", maxResults: 1 },
+  "tavily_tavily-extract": { urls: ["https://example.com"] },
+  "tavily_tavily-map": { url: "https://example.com" },
+  
+  // Context7 tools
+  "context7_resolve-library-id": { libraryName: "react" },
+  
+  // Octocode GitHub tools - minimal queries
+  "octocode_githubSearchRepositories": { query: "test", maxResults: 1 },
+  "octocode_githubSearchCode": { query: "function test", maxResults: 1 },
+  "octocode_githubViewRepoStructure": { owner: "octocat", repo: "Hello-World" },
+  
+  // Perplexity tools - minimal queries
+  "perplexity_perplexity_ask": { query: "What is 1+1?" },
+  "perplexity_perplexity_search": { query: "test", maxResults: 1 },
+};
+
+/**
+ * Generate minimal arguments from a JSON schema
+ * Used as fallback when no predefined test prompt exists
+ */
+function generateMinimalArgs(schema: Record<string, unknown>): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  
+  if (schema.type !== "object" || !schema.properties) {
+    return args;
+  }
+  
+  const properties = schema.properties as Record<string, Record<string, unknown>>;
+  const required = (schema.required as string[]) || [];
+  
+  // Only fill in required properties with minimal values
+  for (const propName of required) {
+    const prop = properties[propName];
+    if (!prop) continue;
+    
+    const enumValues = prop.enum as unknown[] | undefined;
+    
+    switch (prop.type) {
+      case "string":
+        args[propName] = prop.default ?? (enumValues?.[0]) ?? "test";
+        break;
+      case "number":
+      case "integer":
+        args[propName] = prop.default ?? prop.minimum ?? 1;
+        break;
+      case "boolean":
+        args[propName] = prop.default ?? false;
+        break;
+      case "array":
+        args[propName] = prop.default ?? [];
+        break;
+      case "object":
+        args[propName] = prop.default ?? {};
+        break;
+      default:
+        args[propName] = prop.default ?? null;
+    }
+  }
+  
+  return args;
+}
+
 /**
  * Check if running in test environment
  */
@@ -652,6 +749,172 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
               retryAttempts: connectionConfig.retryAttempts,
             },
           }, null, 2);
+        },
+      }),
+
+      /**
+       * Test Tool
+       * Execute all tools with minimal predefined prompts to verify they work
+       * Shows full step-by-step progress with complete inputs and outputs
+       */
+      toolbox_test: tool({
+        description: TEST_DESC,
+
+        args: {
+          timeout: tool.schema
+            .number()
+            .optional()
+            .describe("Timeout per tool in ms (default: 10000)"),
+        },
+
+        async execute(args) {
+          const startTime = performance.now();
+          const output: string[] = [];
+          
+          output.push("=" .repeat(80));
+          output.push("TOOLBOX TEST - Full Execution Log");
+          output.push("=" .repeat(80));
+          output.push("");
+          
+          try {
+            await ensureInitialized();
+          } catch (error) {
+            output.push(`[FATAL] Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
+            return output.join("\n");
+          }
+
+          const allTools = mcpManager.getAllCatalogTools();
+          const timeout = args.timeout || 10000;
+          
+          output.push(`[INFO] Found ${allTools.length} tools to test`);
+          output.push(`[INFO] Timeout per tool: ${timeout}ms`);
+          output.push(`[INFO] Started at: ${new Date().toISOString()}`);
+          output.push("");
+          
+          // Track results for summary
+          let passed = 0;
+          let failed = 0;
+          let timedOut = 0;
+          let skipped = 0;
+          
+          // Execute tools sequentially to show clear step-by-step progress
+          for (let i = 0; i < allTools.length; i++) {
+            const catalogTool = allTools[i]!;
+            const toolId = catalogTool.idString;
+            const testNum = i + 1;
+            
+            output.push("-".repeat(80));
+            output.push(`[TEST ${testNum}/${allTools.length}] ${toolId}`);
+            output.push("-".repeat(80));
+            
+            const parsed = parseToolName(toolId);
+            
+            if (!parsed) {
+              output.push(`[SKIP] Invalid tool name format`);
+              output.push("");
+              skipped++;
+              continue;
+            }
+            
+            output.push(`[INFO] Server: ${parsed.serverName}`);
+            output.push(`[INFO] Tool: ${parsed.toolName}`);
+            output.push(`[INFO] Description: ${catalogTool.description || "(no description)"}`);
+            output.push("");
+            
+            // Determine test arguments
+            let testArgs: Record<string, unknown>;
+            let argsSource: string;
+            
+            const predefinedArgs = TEST_PROMPTS[toolId];
+            if (predefinedArgs !== undefined) {
+              testArgs = predefinedArgs;
+              argsSource = "PREDEFINED";
+            } else {
+              testArgs = generateMinimalArgs(catalogTool.inputSchema);
+              argsSource = Object.keys(testArgs).length > 0 ? "GENERATED" : "EMPTY";
+            }
+            
+            output.push(`[INPUT] Arguments source: ${argsSource}`);
+            output.push(`[INPUT] Request payload:`);
+            output.push(JSON.stringify(testArgs, null, 2).split("\n").map(line => "        " + line).join("\n"));
+            output.push("");
+            
+            // Execute with timeout
+            const toolStart = performance.now();
+            
+            try {
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error("TIMEOUT")), timeout);
+              });
+              
+              const execPromise = mcpManager.callTool(
+                parsed.serverName,
+                parsed.toolName,
+                testArgs,
+              );
+              
+              const result = await Promise.race([execPromise, timeoutPromise]);
+              const duration = Math.round(performance.now() - toolStart);
+              
+              output.push(`[OUTPUT] Response received in ${duration}ms:`);
+              const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+              output.push(resultStr.split("\n").map(line => "        " + line).join("\n"));
+              output.push("");
+              output.push(`[PASS] ✓ Test passed in ${duration}ms`);
+              passed++;
+              
+            } catch (error) {
+              const duration = Math.round(performance.now() - toolStart);
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              
+              if (errorMsg === "TIMEOUT") {
+                output.push(`[OUTPUT] No response - timed out after ${timeout}ms`);
+                output.push("");
+                output.push(`[TIMEOUT] ✗ Test timed out after ${duration}ms`);
+                timedOut++;
+              } else {
+                output.push(`[OUTPUT] Error response:`);
+                output.push(`        ${errorMsg}`);
+                output.push("");
+                output.push(`[FAIL] ✗ Test failed in ${duration}ms`);
+                output.push(`[FAIL] Error: ${errorMsg}`);
+                failed++;
+              }
+            }
+            
+            output.push("");
+          }
+          
+          // Final summary
+          const totalDuration = Math.round(performance.now() - startTime);
+          const total = allTools.length;
+          const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+          
+          output.push("=".repeat(80));
+          output.push("TEST SUMMARY");
+          output.push("=".repeat(80));
+          output.push("");
+          output.push(`Total tests:    ${total}`);
+          output.push(`Passed:         ${passed} ✓`);
+          output.push(`Failed:         ${failed} ✗`);
+          output.push(`Timed out:      ${timedOut} ⏱`);
+          output.push(`Skipped:        ${skipped} ⊘`);
+          output.push("");
+          output.push(`Success rate:   ${successRate}%`);
+          output.push(`Total duration: ${totalDuration}ms`);
+          output.push(`Finished at:    ${new Date().toISOString()}`);
+          output.push("");
+          output.push("=".repeat(80));
+          
+          log("info", `Toolbox test completed: ${passed}/${total} passed in ${totalDuration}ms`, {
+            passed,
+            failed,
+            timedOut,
+            skipped,
+            total,
+          });
+          
+          return output.join("\n");
         },
       }),
     },
