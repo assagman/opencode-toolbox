@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-08
+
+### Added
+- **Test tool**: New `toolbox_test` tool for testing all MCP tools with predefined minimal prompts
+- Predefined test prompts for all known tools (time, brave, brightdata, tavily, context7, octocode, perplexity)
+- Auto-generated minimal arguments from JSON schema for unknown tools
+
+### Changed
+- **Instant startup**: System prompt generation no longer waits for MCP server connections
+- System prompt now shows configured server names immediately (from config, not connection state)
+- Removed blocking `waitForPartial()` call from system prompt transform hook
+
+### Performance
+- Plugin startup reduced from ~1.5s to <10ms (no longer blocked by container initialization)
+- MCP servers still connect in background, tools available via `toolbox_search_*` once ready
+
 ## [0.6.0] - 2026-01-08
 
 ### Added
