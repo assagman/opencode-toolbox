@@ -1,5 +1,12 @@
 # opencode-toolbox (Tool Search Tool)
 
+[![npm version](https://badge.fury.io/js/opencode-toolbox.svg)](https://www.npmjs.com/package/opencode-toolbox)
+[![npm downloads](https://img.shields.io/npm/dm/opencode-toolbox)](https://www.npmjs.com/package/opencode-toolbox)
+[![license](https://img.shields.io/npm/l/opencode-toolbox)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![Build Status](https://github.com/assagman/opencode-toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/assagman/opencode-toolbox/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/assagman/opencode-toolbox/branch/main/graph/badge.svg)](https://codecov.io/gh/assagman/opencode-toolbox)
+
 An OpenCode plugin that implements a **tool search tool** pattern, allowing users to keep only a tiny set of tools in LLM context while accessing a larger MCP catalog on-demand.
 
 ## Motivation
