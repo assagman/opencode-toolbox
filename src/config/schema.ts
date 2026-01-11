@@ -12,11 +12,11 @@ export const LocalServerConfigSchema = z.object({
 
 /**
  * Remote MCP server configuration
- * Connects via SSE (Server-Sent Events)
+ * Connects via Streamable HTTP (preferred) or SSE (fallback)
  */
 export const RemoteServerConfigSchema = z.object({
   type: z.literal("remote"),
-  url: z.string().url().describe("SSE endpoint URL"),
+  url: z.string().url().describe("Remote MCP endpoint URL"),
   headers: z.record(z.string(), z.string()).optional().describe("HTTP headers for authentication"),
 });
 
