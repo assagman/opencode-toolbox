@@ -25,7 +25,11 @@ export class RemoteMCPClient implements MCPClient {
     this.config = config;
     this.transportType = null;
 
-    this.client = new Client(
+    this.client = this.createClient();
+  }
+
+  private createClient(): Client {
+    return new Client(
       {
         name: `opencode-toolbox-client-${this.name}`,
         version: "0.1.0",
@@ -40,43 +44,58 @@ export class RemoteMCPClient implements MCPClient {
     }
 
     const url = new URL(this.config.url);
+    this.transportType = null;
 
     // Try Streamable HTTP first (newer protocol)
+    let streamableTransport: StreamableHTTPClientTransport | null = null;
     try {
-      this.transport = new StreamableHTTPClientTransport(url, {
+      streamableTransport = new StreamableHTTPClientTransport(url, {
         requestInit: {
           headers: this.config.headers,
         },
       });
-      await this.client.connect(this.transport);
+
+      await this.client.connect(streamableTransport);
+      this.transport = streamableTransport;
       this.transportType = "streamable-http";
       return;
     } catch (error) {
+      // Clean up only the attempted transport; avoid closing an existing connection.
+      if (streamableTransport) {
+        await streamableTransport.close().catch(() => {});
+      }
+
       // If Streamable HTTP fails, try SSE fallback
       // Reset client for new connection attempt
-      this.client = new Client(
-        {
-          name: `opencode-toolbox-client-${this.name}`,
-          version: "0.1.0",
-        },
-        {}
-      );
+      this.client = this.createClient();
     }
 
     // Fallback to SSE transport (legacy)
-    const sseHeaders = {
-      Accept: "text/event-stream",
-      ...this.config.headers,
-    };
+    let sseTransport: SSEClientTransport | null = null;
+    try {
+      const sseHeaders = {
+        Accept: "text/event-stream",
+        ...this.config.headers,
+      };
 
-    this.transport = new SSEClientTransport(url, {
-      requestInit: {
-        headers: sseHeaders,
-      },
-    });
+      sseTransport = new SSEClientTransport(url, {
+        requestInit: {
+          headers: sseHeaders,
+        },
+      });
 
-    await this.client.connect(this.transport);
-    this.transportType = "sse";
+      await this.client.connect(sseTransport);
+      this.transport = sseTransport;
+      this.transportType = "sse";
+    } catch (error) {
+      // Clean up only the attempted transport; avoid closing an existing connection.
+      if (sseTransport) {
+        await sseTransport.close().catch(() => {});
+      }
+      this.transport = null;
+      this.transportType = null;
+      throw error;
+    }
   }
 
   async listTools(): Promise<any[]> {
