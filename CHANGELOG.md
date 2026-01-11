@@ -7,15 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-11
+
 ### Breaking Changes
 - **`toolbox_execute` parameter renamed**: `name` → `toolId` for clarity
   - Old: `toolbox_execute({ name: "time_get_current_time", ... })`
   - New: `toolbox_execute({ toolId: "time_get_current_time", ... })`
 
+### Added
+- Streamable HTTP transport with SSE fallback for remote MCP connections
+
 ### Changed
 - System prompt rewritten in structured XML format for better readability and debugging
 - Added `{serverName}_{toolName}` format documentation to `toolbox_execute` description
+- Renamed ExtendedToolbox to MCPTools in system prompt
 - Improved code formatting throughout plugin
+
+### Fixed
+- Remote MCP client transport fallback cleanup to avoid closing existing connections
+
+### CI
+- Added CI/CD workflow and README badges
+- Fixed Codecov reporting and generated lcov.info for uploads
 
 ### Documentation
 - Added performance tip about version pinning for instant startup
