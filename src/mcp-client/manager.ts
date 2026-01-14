@@ -33,7 +33,7 @@ export type InitState = "idle" | "initializing" | "partial" | "ready" | "degrade
  */
 export interface MCPManagerEvents {
   /** Emitted when a server successfully connects with its tools */
-  "server:connected": (serverName: string, tools: CatalogTool[]) => void;
+  "server:connected": (serverName: string, tools: CatalogTool[], connectTime: number) => void;
   /** Emitted when a server fails to connect */
   "server:error": (serverName: string, error: string) => void;
   /** Emitted when initialization completes (all servers attempted) */
@@ -262,7 +262,7 @@ export class MCPManager extends EventEmitter {
     globalProfiler.recordServerConnect(name, connectTime, catalogTools.length, "connected");
 
     // Emit event for progressive loading
-    this.emit("server:connected", name, catalogTools);
+    this.emit("server:connected", name, catalogTools, connectTime);
     this.checkPartialReady();
   }
 

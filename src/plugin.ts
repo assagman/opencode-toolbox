@@ -390,7 +390,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
    */
   mcpManager.on(
     "server:connected",
-    (serverName: string, tools: CatalogTool[]) => {
+    (serverName: string, tools: CatalogTool[], connectTime: number) => {
       const startTime = performance.now();
       bm25Index.addToolsBatch(tools);
       const indexTime = performance.now() - startTime;
@@ -399,7 +399,7 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
       log(
         "info",
-        `Server ${serverName} connected, indexed ${tools.length} tools in ${indexTime.toFixed(2)}ms`,
+        `${serverName} - connection time: ${connectTime.toFixed(2)}ms, indexed ${tools.length} tools in ${indexTime.toFixed(2)}ms`,
       );
     },
   );
