@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-01-14
+
+### Added
+- **JSON Schema support**: Config files now support `$schema` for editor autocompletion and validation
+- **Auto-create config**: Plugin automatically creates `~/.config/opencode/toolbox.jsonc` with schema reference on first run
+- **Better error messages**: Config validation errors now show file path and server command/url details
+
+### Fixed
+- **Exponential backoff**: MCP server connection retries now use exponential backoff (100ms → 200ms → 400ms...) instead of fixed delay
+
+### Documentation
+- Added `$schema` to all config examples in README.md, CONFIG.md, and example-config.jsonc
+
 ## [0.8.0] - 2026-01-11
 
 ### Breaking Changes
