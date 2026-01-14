@@ -1,6 +1,6 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { appendFile, mkdir, writeFile, access } from "fs/promises";
+import { appendFile, mkdir, writeFile, readFile } from "fs/promises";
 import { loadConfig, createDefaultConfigIfMissing } from "./config";
 import type { ConnectionConfig } from "./config";
 import { MCPManager } from "./mcp-client";
@@ -22,6 +22,13 @@ const COMMAND_CONTENT = `---
 description: Check toolbox plugin status and server health
 ---
 Run toolbox_status({}) tool and show me the results in a readable format.
+
+Include:
+1. MCP Servers table (name, type, tools, status)
+2. Tool distribution chart
+3. Toolbox's own tools list (from toolboxTools field)
+4. Health status
+
 Highlight any failed servers or issues.
 `;
 
@@ -234,22 +241,25 @@ function log(level: string, message: string, extra?: any) {
 }
 
 /**
- * Create /toolbox-status slash command if it doesn't exist
+ * Create or update /toolbox-status slash command
  * Non-blocking, fire and forget. Skips in test environment.
  */
 function ensureCommandFile() {
   // Skip in test environment
   if (isTestEnv) return;
 
-  access(COMMAND_FILE_PATH).catch(() => {
-    // File doesn't exist, create it
-    mkdir(COMMAND_DIR, { recursive: true })
-      .then(() => writeFile(COMMAND_FILE_PATH, COMMAND_CONTENT))
-      .then(() => log("info", "Created /toolbox-status command file"))
-      .catch(() => {
-        // Ignore errors - non-critical
-      });
-  });
+  mkdir(COMMAND_DIR, { recursive: true })
+    .then(() => readFile(COMMAND_FILE_PATH, "utf-8").catch(() => ""))
+    .then((existing) => {
+      if (existing !== COMMAND_CONTENT) {
+        return writeFile(COMMAND_FILE_PATH, COMMAND_CONTENT).then(() =>
+          log("info", existing ? "Updated /toolbox-status command file" : "Created /toolbox-status command file")
+        );
+      }
+    })
+    .catch(() => {
+      // Ignore errors - non-critical
+    });
 }
 
 /**
@@ -805,6 +815,14 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
               serversWithTools: servers.filter((s) => s.tools.length > 0)
                 .length,
             },
+            toolboxTools: [
+              "toolbox_search_bm25",
+              "toolbox_search_regex",
+              "toolbox_execute",
+              "toolbox_status",
+              "toolbox_perf",
+              "toolbox_test",
+            ],
             health: {
               status:
                 failedServers.length === 0 && servers.length > 0
