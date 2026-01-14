@@ -340,8 +340,10 @@ grep "WARN" ~/.local/share/opencode/toolbox.log
 **Log format:**
 ```
 2026-01-08T12:34:56.789Z [INFO] Toolbox plugin loaded successfully {"configPath":"...","serverCount":6}
-2026-01-08T12:34:57.123Z [INFO] Initialization complete: 5/6 servers connected, 42 tools indexed
-2026-01-08T12:34:57.124Z [WARN] 1 server(s) failed to connect: weather
+2026-01-08T12:34:57.100Z [INFO] time - connection time: 648.12ms, indexed 2 tools in 0.07ms
+2026-01-08T12:34:57.200Z [INFO] github - connection time: 892.45ms, indexed 12 tools in 0.15ms
+2026-01-08T12:34:58.500Z [INFO] Initialization complete in 1723.45ms: 2/3 servers, 14 tools indexed
+2026-01-08T12:34:58.501Z [WARN] Server weather failed: Connection timeout after 5000ms
 2026-01-08T12:35:00.456Z [INFO] BM25 search completed: "web search" -> 3 results
 ```
 
@@ -383,6 +385,8 @@ This shows:
 3. Verify server command works standalone: `npx -y @anthropic/mcp-time`
 4. For remote servers, verify URL is accessible
 5. Check environment variables are set correctly
+
+> **Note:** Connection retries use exponential backoff (100ms → 200ms → 400ms..., max 30s) before failing.
 
 ### Execute fails
 
