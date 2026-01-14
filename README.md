@@ -168,6 +168,9 @@ Returns a comprehensive status object:
 {
   "plugin": {
     "initialized": true,
+    "initState": "ready",
+    "initMode": "eager",
+    "initDurationMs": 1234,
     "configPath": "/Users/username/.config/opencode/toolbox.jsonc",
     "uptime": 123.45,
     "searches": 23,
@@ -185,8 +188,9 @@ Returns a comprehensive status object:
         "name": "time",
         "status": "connected",
         "type": "local",
-        "toolCount": 5,
+        "toolCount": 2,
         "error": null,
+        "commandString": "uvx mcp-server-time",
         "healthy": true
       },
       {
@@ -195,6 +199,7 @@ Returns a comprehensive status object:
         "type": "local",
         "toolCount": 12,
         "error": null,
+        "commandString": "npx -y @anthropic/mcp-github",
         "healthy": true
       },
       {
@@ -202,16 +207,25 @@ Returns a comprehensive status object:
         "status": "error",
         "type": "remote",
         "toolCount": 0,
-        "error": "Failed to connect: timeout",
+        "error": "Connection timeout after 5000ms",
+        "url": "https://mcp.example.com/weather",
         "healthy": false
       }
     ]
   },
   "tools": {
-    "total": 17,
-    "available": 17,
+    "total": 14,
+    "indexed": 14,
     "serversWithTools": 2
   },
+  "toolboxTools": [
+    "toolbox_search_bm25",
+    "toolbox_search_regex",
+    "toolbox_execute",
+    "toolbox_status",
+    "toolbox_perf",
+    "toolbox_test"
+  ],
   "health": {
     "status": "degraded",
     "message": "1 server(s) failed to connect"
@@ -226,13 +240,15 @@ Returns a comprehensive status object:
 
 ### /toolbox-status Slash Command
 
-The plugin automatically creates a `/toolbox-status` slash command on first launch:
+The plugin automatically creates and maintains the `/toolbox-status` slash command:
 
 ```
 ~/.config/opencode/command/toolbox-status.md
 ```
 
 Use it in OpenCode by typing `/toolbox-status` to get a formatted status report.
+
+> **Note:** The command file auto-updates when the plugin version changes.
 
 ### toolbox_perf
 
