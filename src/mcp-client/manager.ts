@@ -182,8 +182,12 @@ export class MCPManager extends EventEmitter {
         lastError = error instanceof Error ? error : new Error(String(error));
         
         if (attempt < maxAttempts) {
-          // Wait before retry
-          await sleep(this.connectionConfig.retryDelay);
+          // Exponential backoff based on retryDelay (base)
+          const baseDelay = this.connectionConfig.retryDelay;
+          const exponentialDelay = baseDelay * Math.pow(2, attempt - 1);
+          // Cap to 30s to avoid excessively long waits
+          const delayMs = Math.min(exponentialDelay, 30000);
+          await sleep(delayMs);
         }
       }
     }
