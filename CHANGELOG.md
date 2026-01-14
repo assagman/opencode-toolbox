@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-01-14
+
+### Added
+- **toolboxTools in status**: `toolbox_status` now includes array of toolbox's own 6 tools for visibility
+- **Auto-update command file**: `/toolbox-status` slash command file now auto-updates when content changes
+
+### Fixed
+- **Connection time logging**: Server connected log now shows actual connection time separately from indexing time
+  - Before: `Server time connected, indexed 2 tools in 0.07ms` (misleading - only showed indexing)
+  - After: `time - connection time: 648.12ms, indexed 2 tools in 0.07ms`
+
+### Documentation
+- Updated `toolbox_status` example output with new fields (initState, initMode, initDurationMs, commandString, url, toolboxTools)
+- Updated log format examples with connection time metrics
+- Added exponential backoff note to troubleshooting section
+
 ## [0.9.0] - 2026-01-14
 
 ### Added
