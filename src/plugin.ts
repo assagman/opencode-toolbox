@@ -1,12 +1,15 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { appendFile, mkdir, writeFile, access } from "fs/promises";
-import { loadConfig } from "./config";
+import { loadConfig, createDefaultConfigIfMissing } from "./config";
 import type { ConnectionConfig } from "./config";
 import { MCPManager } from "./mcp-client";
 import { BM25Index, searchWithRegex, MAX_REGEX_LENGTH } from "./search";
 import type { CatalogTool, SearchResult } from "./catalog";
 import { globalProfiler } from "./profiler";
+
+/** Package version for schema URL - read at build time */
+const PACKAGE_VERSION = "0.8.0";
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME}/.config/opencode/toolbox.jsonc`;
 const LOG_FILE_PATH = `${process.env.HOME}/.local/share/opencode/toolbox.log`;
@@ -325,10 +328,24 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
 
   // Load configuration
   const configPath = process.env.OPENCODE_TOOLBOX_CONFIG || DEFAULT_CONFIG_PATH;
+
+  // Auto-create config if missing (non-blocking, fire and forget in test env)
+  if (!isTestEnv) {
+    const created = await createDefaultConfigIfMissing(configPath, PACKAGE_VERSION);
+    if (created) {
+      log("info", `Created default config file at ${configPath}`);
+    }
+  }
+
   const configResult = await loadConfig(configPath);
 
   if (!configResult.success) {
-    const errorMsg = `Failed to load config from ${configPath}: ${configResult.error.issues.map((i) => i.message).join(", ")}`;
+    // Format Zod errors with path information for better debugging
+    const formattedErrors = configResult.error.issues.map((issue) => {
+      const path = issue.path.length > 0 ? `at "${issue.path.join(".")}"` : "";
+      return `${issue.message} ${path}`.trim();
+    }).join("; ");
+    const errorMsg = `Failed to load config from ${configPath}: ${formattedErrors}`;
     // Log to file only - don't block
     log("error", errorMsg);
     // Return empty hooks if config fails - plugin disabled
@@ -663,9 +680,49 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
               error: errorMsg,
               durationMs: duration,
             });
+
+            const server = mcpManager.getServer(parsed.serverName);
+            const configuredServer = config.mcp[parsed.serverName];
+
+            const serverInfo = server
+              ? {
+                  name: server.name,
+                  status: server.status,
+                  type: server.config.type,
+                  error: server.error || null,
+                  command:
+                    server.config.type === "local" ? server.config.command || null : undefined,
+                  commandString:
+                    server.config.type === "local" && server.config.command
+                      ? server.config.command.join(" ")
+                      : undefined,
+                  url: server.config.type === "remote" ? server.config.url || null : undefined,
+                }
+              : configuredServer
+                ? {
+                    name: parsed.serverName,
+                    status: "unknown",
+                    type: configuredServer.type,
+                    error: null,
+                    command:
+                      configuredServer.type === "local" ? configuredServer.command || null : undefined,
+                    commandString:
+                      configuredServer.type === "local" && configuredServer.command
+                        ? configuredServer.command.join(" ")
+                        : undefined,
+                    url: configuredServer.type === "remote" ? configuredServer.url || null : undefined,
+                  }
+                : {
+                    name: parsed.serverName,
+                    status: "unknown",
+                    type: "unknown",
+                    error: null,
+                  };
+
             return JSON.stringify({
               success: false,
               error: errorMsg,
+              server: serverInfo,
             });
           }
         },
@@ -732,6 +789,13 @@ export const ToolboxPlugin: Plugin = async (ctx: PluginInput) => {
                 type: server.config.type,
                 toolCount: server.tools.length,
                 error: server.error || null,
+                command:
+                  server.config.type === "local" ? server.config.command || null : undefined,
+                commandString:
+                  server.config.type === "local" && server.config.command
+                    ? server.config.command.join(" ")
+                    : undefined,
+                url: server.config.type === "remote" ? server.config.url || null : undefined,
                 healthy: server.status === "connected",
               })),
             },

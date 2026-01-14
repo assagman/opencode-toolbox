@@ -12,6 +12,7 @@
 2. Create Toolbox config (`~/.config/opencode/toolbox.jsonc`):
 ```jsonc
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
     "time": {
       "type": "local",
@@ -20,6 +21,8 @@
   }
 }
 ```
+
+> **Note:** The config file is auto-created with default settings if it doesn't exist when the plugin loads.
 
 ## Config File Location
 
@@ -30,6 +33,9 @@
 
 ```jsonc
 {
+  // JSON Schema for editor support (optional, recommended)
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
+
   // MCP servers to manage (required)
   "mcp": {
     // Local MCP server (stdio)
@@ -73,6 +79,7 @@ Runs MCP server as a child process via stdio:
 
 ```jsonc
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
     "my-server": {
       "type": "local",
@@ -91,6 +98,7 @@ Connects to MCP server via HTTP/SSE:
 
 ```jsonc
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
     "my-remote": {
       "type": "remote",
@@ -109,6 +117,7 @@ Use `{env:VAR_NAME}` pattern to reference environment variables:
 
 ```jsonc
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
     "github": {
       "type": "local",
@@ -122,6 +131,22 @@ Use `{env:VAR_NAME}` pattern to reference environment variables:
 ```
 
 If the environment variable doesn't exist, it will be replaced with an empty string.
+
+## JSON Schema
+
+Add `$schema` to your config for editor autocompletion and validation:
+
+```jsonc
+{
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
+  "mcp": { ... }
+}
+```
+
+The `@latest` tag auto-updates when new versions are published to npm. To pin a specific version:
+```
+https://unpkg.com/opencode-toolbox@0.8.0/toolbox.schema.json
+```
 
 ## Settings
 

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
+  "title": "OpenCode Toolbox Configuration",
+  "description": "Configuration schema for opencode-toolbox plugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor support"
+    },
+    "mcp": {
+      "type": "object",
+      "description": "MCP servers to connect to",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Local MCP server (stdio)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "local",
+                "description": "Server type: local process via stdio"
+              },
+              "command": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1,
+                "description": "Command and arguments to spawn the MCP server"
+              },
+              "environment": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Environment variables for the process. Use {env:VAR_NAME} for interpolation."
+              }
+            },
+            "required": ["type", "command"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Remote MCP server (HTTP/SSE)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "remote",
+                "description": "Server type: remote HTTP/SSE endpoint"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Remote MCP endpoint URL"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "HTTP headers for authentication. Use {env:VAR_NAME} for interpolation."
+              }
+            },
+            "required": ["type", "url"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Plugin settings",
+      "properties": {
+        "defaultLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 5,
+          "description": "Default number of search results to return"
+        },
+        "initMode": {
+          "type": "string",
+          "enum": ["eager", "lazy"],
+          "default": "eager",
+          "description": "Initialization mode: 'eager' connects on plugin load, 'lazy' connects on first use"
+        },
+        "connection": {
+          "type": "object",
+          "description": "Connection settings for MCP servers",
+          "properties": {
+            "connectTimeout": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 60000,
+              "default": 5000,
+              "description": "Connection timeout in milliseconds"
+            },
+            "requestTimeout": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 300000,
+              "default": 30000,
+              "description": "Request timeout in milliseconds"
+            },
+            "retryAttempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 2,
+              "description": "Number of retry attempts on connection failure"
+            },
+            "retryDelay": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30000,
+              "default": 1000,
+              "description": "Delay between retries in milliseconds"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["mcp"],
+  "additionalProperties": false
+}

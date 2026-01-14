@@ -1,2 +1,2 @@
 export * from "./schema";
-export * from "./loader";
+export { parseConfig, loadConfig, getSchemaUrl, generateDefaultConfig, createDefaultConfigIfMissing } from "./loader";

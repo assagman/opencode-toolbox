@@ -46,6 +46,7 @@ Create `~/.config/opencode/toolbox.jsonc`:
 
 ```jsonc
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
     "time": {
       "type": "local",
@@ -71,6 +72,8 @@ Create `~/.config/opencode/toolbox.jsonc`:
   }
 }
 ```
+
+> **Note:** The config file is auto-created with default settings if it doesn't exist.
 
 ### Environment Variables
 

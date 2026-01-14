@@ -20,10 +20,22 @@ export const RemoteServerConfigSchema = z.object({
   headers: z.record(z.string(), z.string()).optional().describe("HTTP headers for authentication"),
 });
 
-export const ServerConfigSchema = z.discriminatedUnion("type", [
-  LocalServerConfigSchema,
-  RemoteServerConfigSchema,
-]);
+/**
+ * Server configuration with improved error messages
+ */
+export const ServerConfigSchema = z
+  .object({
+    type: z.enum(["local", "remote"], {
+      error: 'Server "type" must be "local" or "remote"',
+    }),
+  })
+  .passthrough()
+  .pipe(
+    z.discriminatedUnion("type", [
+      LocalServerConfigSchema,
+      RemoteServerConfigSchema,
+    ])
+  );
 
 /**
  * Connection settings for MCP servers
@@ -60,6 +72,8 @@ export const SettingsConfigSchema = z.object({
  * Located at ~/.config/opencode/toolbox.jsonc
  */
 export const ConfigSchema = z.object({
+  /** JSON Schema reference for editor support */
+  $schema: z.string().optional(),
   /** MCP servers to connect to */
   mcp: z.record(z.string(), ServerConfigSchema),
   /** Plugin settings */

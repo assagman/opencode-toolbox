@@ -1,19 +1,17 @@
 {
+  "$schema": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
   "mcp": {
-    "gmail": {
+    "time": {
       "type": "local",
-      "command": ["npx", "-y", "@anthropic/mcp-gmail"],
-      "environment": {
-        "GMAIL_CREDENTIALS": "{env:GMAIL_CREDENTIALS}"
-      }
+      "command": ["uvx", "mcp-server-time"],
     },
-    "github": {
-      "type": "local",
-      "command": ["npx", "-y", "@anthropic/mcp-github"],
-      "environment": {
-        "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
-      }
-    }
+    "tavily": {
+      "type": "remote",
+      "url": "https://mcp.tavily.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer {env:TAVILY_API_KEY}",
+      },
+    },
   },
   "settings": {
     "defaultLimit": 5,
@@ -22,7 +20,7 @@
       "connectTimeout": 5000,
       "requestTimeout": 30000,
       "retryAttempts": 2,
-      "retryDelay": 1000
-    }
-  }
+      "retryDelay": 1000,
+    },
+  },
 }
