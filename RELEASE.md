@@ -109,8 +109,7 @@ git checkout -b release-vX.Y.Z
 ### 2. Update Version
 
 ```bash
-# Update package.json version
-jq '.version = "X.Y.Z"' package.json > tmp && mv tmp package.json
+npm version X.Y.Z --no-git-tag-version
 ```
 
 ### 3. Update CHANGELOG.md
@@ -180,7 +179,8 @@ After release, verify:
 ### Version Conflicts
 
 - If tag already exists, the workflow skips tag creation
-- Delete existing tag if you need to re-release: `git push --delete origin vX.Y.Z`
+- **Do not delete existing tags** - create a new patch version instead (e.g., `v1.0.1` if `v1.0.0` had issues)
+- For problematic releases, deprecate the npm version: `npm deprecate opencode-toolbox@X.Y.Z "Reason for deprecation"`
 
 ## Workflow Files
 
