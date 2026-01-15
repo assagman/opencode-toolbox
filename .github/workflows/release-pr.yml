@@ -1,0 +1,242 @@
+name: Create Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - auto
+        default: 'auto'
+      custom_version:
+        description: 'Custom version (overrides version_type if set, e.g., 1.2.3)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-release-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(jq -r '.version' package.json)
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Determine version bump from commits
+        id: analyze
+        if: inputs.version_type == 'auto' && inputs.custom_version == ''
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log --oneline ${LAST_TAG}..HEAD)
+          fi
+          
+          echo "Commits since last tag:"
+          echo "$COMMITS"
+          
+          # Analyze commits for version bump (conventional commits)
+          BUMP="patch"
+          
+          if echo "$COMMITS" | grep -qiE "^[a-f0-9]+ (feat|feature)(\(.+\))?!:|BREAKING CHANGE"; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -qiE "^[a-f0-9]+ (feat|feature)(\(.+\))?:"; then
+            BUMP="minor"
+          fi
+          
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "Determined bump type: $BUMP"
+
+      - name: Calculate new version
+        id: version
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          
+          # Use custom version if provided
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            NEW_VERSION="${{ inputs.custom_version }}"
+          else
+            # Determine bump type
+            if [ "${{ inputs.version_type }}" == "auto" ]; then
+              BUMP="${{ steps.analyze.outputs.bump }}"
+            else
+              BUMP="${{ inputs.version_type }}"
+            fi
+            
+            # Split version into parts
+            # TODO: Handle prerelease versions (e.g., 1.0.0-alpha.1) - currently will fail on arithmetic
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            
+            case "$BUMP" in
+              major)
+                NEW_VERSION="$((MAJOR + 1)).0.0"
+                ;;
+              minor)
+                NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+                ;;
+              patch)
+                NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                ;;
+            esac
+          fi
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Create release branch
+        run: |
+          BRANCH_NAME="release-v${{ steps.version.outputs.new_version }}"
+          git checkout -b "$BRANCH_NAME"
+          echo "Created branch: $BRANCH_NAME"
+
+      - name: Update package.json version
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          echo "Updated package.json to version $NEW_VERSION"
+
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          TODAY=$(date +%Y-%m-%d)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          # Get commits grouped by type
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s" HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"%s" ${LAST_TAG}..HEAD)
+          fi
+          
+          # Build changelog entry
+          ENTRY="## [$NEW_VERSION] - $TODAY"$'\n\n'
+          
+          # Features (normalize case before sed to handle Feat/FEAT variants)
+          FEATURES=$(echo "$COMMITS" | grep -iE "^feat(\(.+\))?:" | tr '[:upper:]' '[:lower:]' | sed 's/^feat(\([^)]*\)): /- **\1**: /' | sed 's/^feat: /- /' || true)
+          if [ -n "$FEATURES" ]; then
+            ENTRY+="### Added"$'\n'"$FEATURES"$'\n\n'
+          fi
+          
+          # Fixes (normalize case before sed to handle Fix/FIX variants)
+          FIXES=$(echo "$COMMITS" | grep -iE "^fix(\(.+\))?:" | tr '[:upper:]' '[:lower:]' | sed 's/^fix(\([^)]*\)): /- **\1**: /' | sed 's/^fix: /- /' || true)
+          if [ -n "$FIXES" ]; then
+            ENTRY+="### Fixed"$'\n'"$FIXES"$'\n\n'
+          fi
+          
+          # Other changes (chore, refactor, docs, etc.)
+          OTHERS=$(echo "$COMMITS" | grep -ivE "^(feat|fix|chore|ci|docs|test)(\(.+\))?:" | head -10 | sed 's/^/- /' || true)
+          if [ -n "$OTHERS" ]; then
+            ENTRY+="### Changed"$'\n'"$OTHERS"$'\n\n'
+          fi
+          
+          # Save entry to file for use in PR body
+          echo "$ENTRY" > /tmp/changelog_entry.md
+          
+          # Prepend to CHANGELOG.md if it exists
+          # NOTE: Assumes CHANGELOG.md has a single-line header (e.g., "# Changelog")
+          # Multi-line headers or non-standard formats may require manual adjustment
+          if [ -f "CHANGELOG.md" ]; then
+            head -n 1 CHANGELOG.md > /tmp/changelog_new.md
+            echo "" >> /tmp/changelog_new.md
+            cat /tmp/changelog_entry.md >> /tmp/changelog_new.md
+            tail -n +2 CHANGELOG.md >> /tmp/changelog_new.md
+            mv /tmp/changelog_new.md CHANGELOG.md
+            echo "Updated CHANGELOG.md"
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit changes
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          git add package.json
+          [ -f CHANGELOG.md ] && git add CHANGELOG.md
+          git commit -m "chore(release): prepare v$NEW_VERSION"
+
+      - name: Push branch
+        run: |
+          BRANCH_NAME="release-v${{ steps.version.outputs.new_version }}"
+          git push -u origin "$BRANCH_NAME"
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          CURRENT_VERSION="${{ steps.current.outputs.version }}"
+          
+          # Create PR body
+          cat << 'EOF' > /tmp/pr_body.md
+          ## Release v$NEW_VERSION
+          
+          This PR prepares the release of version **$NEW_VERSION** (from $CURRENT_VERSION).
+          
+          ### Changes included
+          
+          EOF
+          
+          # Append changelog entry if exists
+          if [ -f /tmp/changelog_entry.md ]; then
+            cat /tmp/changelog_entry.md >> /tmp/pr_body.md
+          fi
+          
+          cat << 'EOF' >> /tmp/pr_body.md
+          
+          ---
+          
+          ### Checklist
+          
+          - [ ] Version bump is correct
+          - [ ] CHANGELOG.md is accurate
+          - [ ] All tests pass
+          
+          ### After merge
+          
+          When this PR is merged:
+          1. A git tag `v$NEW_VERSION` will be created automatically
+          2. A GitHub release will be published
+          3. The package will be published to npm
+          EOF
+          
+          # Replace version placeholders
+          sed -i "s/\$NEW_VERSION/$NEW_VERSION/g" /tmp/pr_body.md
+          sed -i "s/\$CURRENT_VERSION/$CURRENT_VERSION/g" /tmp/pr_body.md
+          
+          gh pr create \
+            --title "Release v$NEW_VERSION" \
+            --body-file /tmp/pr_body.md \
+            --base main \
+            --label "release" \
+            --label "automated"

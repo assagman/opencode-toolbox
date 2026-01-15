@@ -1,136 +1,190 @@
 # Release Process
 
-This document describes the release process for opencode-toolbox. Follow these steps in order.
+This document describes the automated release process for opencode-toolbox.
+
+## Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          RELEASE AUTOMATION FLOW                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────────┐ │
+│  │ 1. TRIGGER      │    │ 2. REVIEW        │    │ 3. AUTO-PUBLISH         │ │
+│  │                 │    │                  │    │    (on PR merge)        │ │
+│  │ Manual dispatch │───▶│ Release PR       │───▶│                         │ │
+│  │ via GitHub UI   │    │ created          │    │ • Create git tag        │ │
+│  │                 │    │                  │    │ • GitHub release        │ │
+│  │ Inputs:         │    │ Branch:          │    │ • npm publish           │ │
+│  │ - version type  │    │ release-vX.Y.Z   │    │                         │ │
+│  │ - custom ver    │    │                  │    │                         │ │
+│  └─────────────────┘    └──────────────────┘    └─────────────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Prerequisites
 
-- Git with GPG signing configured
-- npm account with publish access
-- GitHub CLI (`gh`) installed and authenticated
+### One-time Setup (Already Done ✅)
 
-## Release Steps
+1. **npm OIDC Trusted Publisher**: Configured via npm → Package Settings → Trusted Publishers
+   - Repository: `assagman/opencode-toolbox`
+   - Workflow: `release-publish.yml`
+   - Environment: `publish`
+   - **No secrets required** - uses OpenID Connect for secure, token-less publishing
 
-### 1. Determine Version Number
+2. **GitHub Environment**: Create environment `publish` in repo settings
+   - Go to Settings → Environments → New environment → `publish`
 
-Review changes since last release and determine version bump:
+3. **GitHub Labels**: Ensure these labels exist:
+   - `release` - Triggers the publish workflow on PR merge
+   - `automated` - Optional, for tracking automated PRs
+
+## Creating a Release
+
+### Step 1: Trigger the Release Workflow
+
+1. Go to **Actions** → **Create Release PR**
+2. Click **Run workflow**
+3. Select options:
+
+| Option | Description |
+|--------|-------------|
+| `patch` | Bug fixes (0.0.X) |
+| `minor` | New features, backward compatible (0.X.0) |
+| `major` | Breaking changes (X.0.0) |
+| `auto`  | Analyze commits to determine version bump |
+| Custom version | Override with specific version (e.g., `2.0.0`) |
+
+4. Click **Run workflow**
+
+### Step 2: Review the Release PR
+
+The workflow automatically:
+- Creates branch `release-vX.Y.Z` from latest `main`
+- Updates `package.json` version
+- Updates `CHANGELOG.md` with categorized commits
+- Creates a PR with the `release` label
+
+Review the PR:
+- [ ] Verify version bump is correct
+- [ ] Review and edit CHANGELOG if needed
+- [ ] Ensure all CI checks pass
+
+### Step 3: Merge to Publish
+
+When the PR is merged, the publish workflow automatically:
+1. Creates a signed git tag `vX.Y.Z`
+2. Creates a GitHub Release with auto-generated notes
+3. Publishes to npm with provenance (via OIDC - no tokens needed)
+
+## Version Determination (Auto Mode)
+
+When using `auto` version type, the workflow analyzes commits since the last tag:
+
+| Commit Pattern | Version Bump |
+|----------------|--------------|
+| `feat!:` or `BREAKING CHANGE` | **major** |
+| `feat:` or `feature:` | **minor** |
+| All other commits | **patch** |
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) for best results:
+- `feat: add new feature` → minor
+- `fix: resolve bug` → patch
+- `feat!: breaking change` → major
+- `chore: update deps` → patch
+
+## Manual Release (Fallback)
+
+If automation fails, follow this manual process:
+
+### 1. Create Release Branch
 
 ```bash
-git log --oneline $(git describe --tags --abbrev=0)..HEAD
+git checkout main
+git pull origin main
+git checkout -b release-vX.Y.Z
 ```
 
-Follow [Semantic Versioning](https://semver.org/):
-- **MAJOR** (X.0.0): Breaking changes
-- **MINOR** (0.X.0): New features, backward compatible
-- **PATCH** (0.0.X): Bug fixes, backward compatible
+### 2. Update Version
 
-### 2. Update CHANGELOG.md
+```bash
+# Update package.json version
+jq '.version = "X.Y.Z"' package.json > tmp && mv tmp package.json
+```
 
-Add a new section at the top of CHANGELOG.md (after the header):
+### 3. Update CHANGELOG.md
+
+Add a new section:
 
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
-- New feature descriptions
-
-### Changed
-- Changes to existing functionality
+- New features
 
 ### Fixed
-- Bug fix descriptions
-
-### Removed
-- Removed features
+- Bug fixes
 ```
 
-Use the commit history to write meaningful descriptions. Group related changes.
-
-### 3. Bump Version in package.json
-
-Update the version field:
-
-```json
-"version": "X.Y.Z"
-```
-
-### 4. Commit Release
-
-Stage and commit both files together:
+### 4. Commit and Push
 
 ```bash
-git add CHANGELOG.md package.json
-git commit -m "Release vX.Y.Z"
+git add package.json CHANGELOG.md
+git commit -m "chore(release): prepare vX.Y.Z"
+git push -u origin release-vX.Y.Z
 ```
 
-### 5. Push to Remote
+### 5. Create PR
 
 ```bash
-git push
+gh pr create --title "Release vX.Y.Z" --label "release" --base main
 ```
 
-### 6. Create Signed Tag
+### 6. After PR Merge (if auto-publish fails)
 
 ```bash
+git checkout main
+git pull
 git tag -s -m "Release vX.Y.Z" vX.Y.Z
-```
-
-### 7. Push Tag
-
-```bash
-git push --follow-tags
-```
-
-### 8. Publish to npm
-
-```bash
+git push --tags
+gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
 npm publish
-```
-
-> **Note**: This requires an OTP code from your authenticator app. The human must run this command.
-
-### 9. Create GitHub Release
-
-Write release notes summarizing the changes (can be derived from CHANGELOG):
-
-```bash
-gh release create vX.Y.Z --title "vX.Y.Z" --notes "RELEASE_NOTES_HERE"
-```
-
-For multi-line notes, use a heredoc:
-
-```bash
-gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
-## What's New
-
-Summary of changes...
-
-### Features
-- Feature 1
-- Feature 2
-
-### Bug Fixes
-- Fix 1
-
-**Full Changelog**: https://github.com/assagman/opencode-toolbox/compare/vPREVIOUS...vX.Y.Z
-EOF
-)"
 ```
 
 ## Verification
 
 After release, verify:
 
-1. **npm**: https://www.npmjs.com/package/opencode-toolbox
-2. **GitHub Releases**: https://github.com/assagman/opencode-toolbox/releases
-3. **Git tags**: `git tag -l`
+| Check | URL |
+|-------|-----|
+| npm package | https://www.npmjs.com/package/opencode-toolbox |
+| GitHub Release | https://github.com/assagman/opencode-toolbox/releases |
+| Git tags | `git tag -l` |
 
-## Quick Reference (Make Targets)
+## Troubleshooting
 
-Helper targets for common operations:
+### NPM Publish Fails
 
-```bash
-make release-tag VERSION=X.Y.Z     # Create signed tag
-make release-push                   # Push commits and tags
-```
+- Verify `publish` environment exists in GitHub repo settings
+- Check OIDC trusted publisher config matches workflow file name
+- Ensure `id-token: write` permission is set in workflow
+- Verify package name is available on npm
 
-> **Note**: `npm publish` requires OTP and must be run manually by the human.
+### PR Not Triggering Publish
+
+- Verify PR has the `release` label
+- Check PR was actually merged (not just closed)
+- Review workflow run logs in Actions tab
+
+### Version Conflicts
+
+- If tag already exists, the workflow skips tag creation
+- Delete existing tag if you need to re-release: `git push --delete origin vX.Y.Z`
+
+## Workflow Files
+
+| File | Purpose |
+|------|---------|
+| `.github/workflows/release-pr.yml` | Creates release PR with version bump |
+| `.github/workflows/release-publish.yml` | Publishes on PR merge |
