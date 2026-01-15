@@ -76,8 +76,8 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           
-          # Get previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          # Get previous tag (exclude current version to find actual previous release)
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="v${VERSION}" HEAD 2>/dev/null || echo "")
           
           # Build release notes
           cat << EOF > /tmp/release_notes.md
@@ -115,8 +115,16 @@ jobs:
       - name: Publish to npm
         # Uses OIDC trusted publisher - no NPM_TOKEN needed
         run: |
-          npm publish --provenance --access public
-          echo "Published to npm: opencode-toolbox@${{ steps.version.outputs.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          PACKAGE_NAME="opencode-toolbox"
+          
+          # Check if this version is already published on npm (idempotency)
+          if npm view "$PACKAGE_NAME@$VERSION" >/dev/null 2>&1; then
+            echo "Version $PACKAGE_NAME@$VERSION already exists on npm, skipping publish"
+          else
+            npm publish --provenance --access public
+            echo "Published to npm: $PACKAGE_NAME@$VERSION"
+          fi
 
       - name: Post release summary
         run: |
