@@ -1,6 +1,6 @@
 {
   "name": "opencode-toolbox",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Tool Search Tool Plugin for OpenCode - search and execute tools from MCP servers on-demand",
   "main": "dist/index.js",
   "module": "dist/index.js",
