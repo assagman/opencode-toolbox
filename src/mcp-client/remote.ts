@@ -4,31 +4,65 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { RemoteMCPServerConfig } from "./types";
 import type { MCPClient } from "./types";
 
-type RemoteTransport = SSEClientTransport | StreamableHTTPClientTransport;
+/**
+ * Transport-like interface for DI/testing
+ */
+export interface RemoteTransport {
+  close(): Promise<void>;
+}
+
+/**
+ * Client-like interface for DI/testing
+ */
+export interface RemoteClientLike {
+  connect(transport: RemoteTransport): Promise<void>;
+  listTools(): Promise<{ tools: any[] }>;
+  callTool(request: { name: string; arguments: Record<string, unknown> }): Promise<any>;
+}
+
+/**
+ * Options for RemoteMCPClient including DI seams for testing
+ */
+export interface RemoteMCPClientOptions {
+  /** Override Client creation for testing */
+  clientFactory?: (name: string) => RemoteClientLike;
+  /** Override StreamableHTTP transport creation for testing */
+  streamableTransportFactory?: (url: URL, headers?: Record<string, string>) => RemoteTransport;
+  /** Override SSE transport creation for testing */
+  sseTransportFactory?: (url: URL, headers: Record<string, string>) => RemoteTransport;
+}
 
 /**
  * Remote MCP client with auto-detection
  * Tries Streamable HTTP first (newer), falls back to SSE (legacy)
  */
 export class RemoteMCPClient implements MCPClient {
-  private client: Client;
+  private client: RemoteClientLike;
   private transport: RemoteTransport | null;
   private toolsCache: any[] | null;
   private name: string;
   private config: RemoteMCPServerConfig;
   private transportType: "streamable-http" | "sse" | null;
+  private options: RemoteMCPClientOptions;
 
-  constructor(config: { name: string } & RemoteMCPServerConfig) {
+  constructor(
+    config: { name: string } & RemoteMCPServerConfig,
+    options?: RemoteMCPClientOptions
+  ) {
     this.transport = null;
     this.toolsCache = null;
     this.name = config.name;
     this.config = config;
     this.transportType = null;
+    this.options = options ?? {};
 
     this.client = this.createClient();
   }
 
-  private createClient(): Client {
+  private createClient(): RemoteClientLike {
+    if (this.options.clientFactory) {
+      return this.options.clientFactory(this.name);
+    }
     return new Client(
       {
         name: `opencode-toolbox-client-${this.name}`,
@@ -36,6 +70,28 @@ export class RemoteMCPClient implements MCPClient {
       },
       {}
     );
+  }
+
+  private createStreamableTransport(url: URL): RemoteTransport {
+    if (this.options.streamableTransportFactory) {
+      return this.options.streamableTransportFactory(url, this.config.headers);
+    }
+    return new StreamableHTTPClientTransport(url, {
+      requestInit: {
+        headers: this.config.headers,
+      },
+    });
+  }
+
+  private createSSETransport(url: URL, headers: Record<string, string>): RemoteTransport {
+    if (this.options.sseTransportFactory) {
+      return this.options.sseTransportFactory(url, headers);
+    }
+    return new SSEClientTransport(url, {
+      requestInit: {
+        headers,
+      },
+    });
   }
 
   async connect(): Promise<void> {
@@ -47,13 +103,9 @@ export class RemoteMCPClient implements MCPClient {
     this.transportType = null;
 
     // Try Streamable HTTP first (newer protocol)
-    let streamableTransport: StreamableHTTPClientTransport | null = null;
+    let streamableTransport: RemoteTransport | null = null;
     try {
-      streamableTransport = new StreamableHTTPClientTransport(url, {
-        requestInit: {
-          headers: this.config.headers,
-        },
-      });
+      streamableTransport = this.createStreamableTransport(url);
 
       await this.client.connect(streamableTransport);
       this.transport = streamableTransport;
@@ -71,18 +123,14 @@ export class RemoteMCPClient implements MCPClient {
     }
 
     // Fallback to SSE transport (legacy)
-    let sseTransport: SSEClientTransport | null = null;
+    let sseTransport: RemoteTransport | null = null;
     try {
       const sseHeaders = {
         Accept: "text/event-stream",
         ...this.config.headers,
       };
 
-      sseTransport = new SSEClientTransport(url, {
-        requestInit: {
-          headers: sseHeaders,
-        },
-      });
+      sseTransport = this.createSSETransport(url, sseHeaders);
 
       await this.client.connect(sseTransport);
       this.transport = sseTransport;
