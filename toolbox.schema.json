@@ -1,6 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unpkg.com/opencode-toolbox@latest/toolbox.schema.json",
+  "allowTrailingCommas": true,
+  "allowComments": true,
   "title": "OpenCode Toolbox Configuration",
   "description": "Configuration schema for opencode-toolbox plugin",
   "type": "object",
