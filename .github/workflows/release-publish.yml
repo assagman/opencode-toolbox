@@ -1,0 +1,137 @@
+name: Publish Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    # Only run if PR was merged and has release label
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-latest
+    environment: publish  # Required for npm OIDC trusted publisher
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Pin to merge commit SHA to avoid race condition with new commits
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js (for npm publish)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Run tests
+        run: bun test
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v$VERSION"
+          
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping tag creation"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Created and pushed tag: $TAG"
+          fi
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Get previous tag (exclude current version to find actual previous release)
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="v${VERSION}" HEAD 2>/dev/null || echo "")
+          
+          # Build release notes
+          cat << EOF > /tmp/release_notes.md
+          ## What's Changed
+          
+          EOF
+          
+          # Get commits for this release
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD >> /tmp/release_notes.md
+            echo "" >> /tmp/release_notes.md
+            echo "" >> /tmp/release_notes.md
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${VERSION}" >> /tmp/release_notes.md
+          else
+            git log --pretty=format:"- %s (%h)" >> /tmp/release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v$VERSION"
+          
+          # Check if release already exists
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping release creation"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file /tmp/release_notes.md
+            echo "Created GitHub release: $TAG"
+          fi
+
+      - name: Publish to npm
+        # Uses OIDC trusted publisher - no NPM_TOKEN needed
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PACKAGE_NAME="opencode-toolbox"
+          
+          # Check if this version is already published on npm (idempotency)
+          if npm view "$PACKAGE_NAME@$VERSION" >/dev/null 2>&1; then
+            echo "Version $PACKAGE_NAME@$VERSION already exists on npm, skipping publish"
+          else
+            npm publish --provenance --access public
+            echo "Published to npm: $PACKAGE_NAME@$VERSION"
+          fi
+
+      - name: Post release summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Git Tag**: v$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **GitHub Release**: https://github.com/${{ github.repository }}/releases/tag/v$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **npm Package**: https://www.npmjs.com/package/opencode-toolbox/v/$VERSION" >> $GITHUB_STEP_SUMMARY
