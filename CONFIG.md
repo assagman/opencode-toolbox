@@ -148,6 +148,8 @@ The `@latest` tag auto-updates when new versions are published to npm. To pin a 
 https://unpkg.com/opencode-toolbox@0.8.0/toolbox.schema.json
 ```
 
+> **JSONC Support:** The schema includes `allowTrailingCommas` and `allowComments` extensions for VS Code and Neovim (jsonls). Editors will not warn about trailing commas or comments in `.jsonc` files referencing this schema.
+
 ## Settings
 
 | Setting | Type | Default | Description |
