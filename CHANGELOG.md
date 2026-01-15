@@ -6,29 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+## [0.10.2] - 2026-01-16
+
+### Added
+- **make**: add workflow targets with fzf interactive prompts (#6)
+
+### Fixed
+- **ci**: update npm to latest for OIDC trusted publishing (#5)
+
 ## [0.10.1] - 2026-01-15
 
 ### Added
-- **schema**: add jsonc support with trailing commas and comments (#1)
+- **JSON Schema JSONC support**: Schema now allows trailing commas and comments for better editor compatibility (#1)
 
 ### Fixed
-- **release**: validate custom version input and include all changelog entries (#3)
-
-### Changed
-- ignore .opencode
-
-
-## [Unreleased]
-
-## [0.10.1] - 2026-01-16
-
-### Added
-- **JSON Schema JSONC support**: Schema now allows trailing commas and comments for better editor compatibility
+- **Release workflow**: Validate custom version input and include all changelog entries (#3)
 
 ### CI/CD
-- **Automated release workflows**: New `release-pr.yml` and `release-publish.yml` for automated versioning and npm publishing
-- **OIDC npm publishing**: Secure npm publishing using GitHub OIDC tokens (no npm tokens stored)
-- **Custom version validation**: Release workflow validates custom version input format
+- Automated release workflows (`release-pr.yml`, `release-publish.yml`) for versioning and npm publishing (#2)
+- OIDC npm publishing using GitHub OIDC tokens (no npm tokens stored)
+
+### Changed
+- Ignore `.opencode` directory
 
 ### Documentation
 - Updated RELEASE.md with automation instructions
@@ -211,7 +212,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/assagman/opencode-toolbox/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/assagman/opencode-toolbox/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/assagman/opencode-toolbox/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/assagman/opencode-toolbox/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/assagman/opencode-toolbox/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/assagman/opencode-toolbox/compare/v0.8.0...v0.9.0

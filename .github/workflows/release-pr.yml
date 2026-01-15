@@ -174,16 +174,25 @@ jobs:
           echo "$ENTRY" > /tmp/changelog_entry.md
           
           # Prepend to CHANGELOG.md if it exists
-          # Preserves full header (everything before first "## [" section marker)
+          # Handles [Unreleased] section: insert new version AFTER it
           if [ -f "CHANGELOG.md" ]; then
-            # Find line number of first version section (## [x.y.z] or ## [Unreleased])
-            HEADER_END=$(grep -n '^## \[' CHANGELOG.md | head -1 | cut -d: -f1)
-            if [ -n "$HEADER_END" ]; then
-              HEADER_END=$((HEADER_END - 1))
-              head -n "$HEADER_END" CHANGELOG.md > /tmp/changelog_new.md
+            # Check for [Unreleased] section (case-insensitive)
+            UNRELEASED_LINE=$(grep -in '^## \[Unreleased\]' CHANGELOG.md | head -1 | cut -d: -f1)
+            # Find first versioned section (## [x.y.z])
+            FIRST_VERSION_LINE=$(grep -n '^## \[[0-9]' CHANGELOG.md | head -1 | cut -d: -f1)
+            
+            if [ -n "$UNRELEASED_LINE" ]; then
+              # Has [Unreleased] section - insert new version after it
+              head -n "$UNRELEASED_LINE" CHANGELOG.md > /tmp/changelog_new.md
               echo "" >> /tmp/changelog_new.md
               cat /tmp/changelog_entry.md >> /tmp/changelog_new.md
-              tail -n +"$((HEADER_END + 1))" CHANGELOG.md >> /tmp/changelog_new.md
+              tail -n +"$((UNRELEASED_LINE + 1))" CHANGELOG.md >> /tmp/changelog_new.md
+            elif [ -n "$FIRST_VERSION_LINE" ]; then
+              # No [Unreleased], insert before first version section
+              head -n "$((FIRST_VERSION_LINE - 1))" CHANGELOG.md > /tmp/changelog_new.md
+              echo "" >> /tmp/changelog_new.md
+              cat /tmp/changelog_entry.md >> /tmp/changelog_new.md
+              tail -n +"$FIRST_VERSION_LINE" CHANGELOG.md >> /tmp/changelog_new.md
             else
               # No version sections found, append to end
               cat CHANGELOG.md > /tmp/changelog_new.md
