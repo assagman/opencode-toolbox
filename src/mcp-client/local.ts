@@ -11,15 +11,20 @@ export interface Transport {
 }
 
 /**
+ * Client-like interface for DI/testing
+ */
+export interface LocalClientLike {
+  connect(transport: Transport): Promise<void>;
+  listTools(): Promise<{ tools: any[] }>;
+  callTool(request: { name: string; arguments: Record<string, unknown> }): Promise<any>;
+}
+
+/**
  * Options for LocalMCPClient including DI seams for testing
  */
 export interface LocalMCPClientOptions {
   /** Override Client creation for testing */
-  clientFactory?: (name: string) => {
-    connect(transport: Transport): Promise<void>;
-    listTools(): Promise<{ tools: any[] }>;
-    callTool(request: { name: string; arguments: Record<string, unknown> }): Promise<any>;
-  };
+  clientFactory?: (name: string) => LocalClientLike;
   /** Override transport creation for testing */
   transportFactory?: (opts: {
     command: string;
@@ -33,7 +38,7 @@ export interface LocalMCPClientOptions {
  * Local MCP client using stdio transport
  */
 export class LocalMCPClient implements MCPClient {
-  private client: ReturnType<NonNullable<LocalMCPClientOptions["clientFactory"]>>;
+  private client: LocalClientLike;
   private transport: Transport | null;
   private toolsCache: any[] | null;
   private name: string;

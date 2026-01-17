@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach } from "bun:test";
+import { test, expect, describe } from "bun:test";
 import { LocalMCPClient, type Transport, type LocalMCPClientOptions } from "../../src/mcp-client/local";
 
 /**
