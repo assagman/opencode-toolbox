@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.4] - 2026-01-20
 
+### Added
+- **Test coverage**: Added unit tests for MCP clients, profiler, and BM25 (#10)
+  - LocalMCPClient unit tests covering constructor, connect, listTools, callTool, close, and caching behavior
+  - RemoteMCPClient unit tests with transport layer isolation
+  - Profiler unit tests covering mark/measure, record, getStats, initialization tracking, server metrics, indexing metrics, export, and reset
+  - BM25Index unit tests for incremental and async operations (addTool, removeTool, has, getStats, indexToolsAsync, addToolsAsync)
+
+### Changed
+- **MCP client testability**: Refactored LocalMCPClient and RemoteMCPClient with dependency injection seams for unit testing
+- **Interface consistency**: Extracted LocalClientLike interface matching RemoteClientLike pattern
+- Simplified client property type from ReturnType<NonNullable<...>> to cleaner type definitions
+
 
 
 ## [0.10.3] - 2026-01-15
