@@ -2,6 +2,7 @@
 // Provides on-demand access to MCP server tools through search and execute
 
 export { ToolboxPlugin, ToolboxPlugin as default } from "./plugin";
+export { filterToolsByPermissions, isToolAllowed } from "./permission-filter";
 
 // Re-export types for consumers
 export type { Config, ServerConfig, LocalServerConfig, RemoteServerConfig } from "./config";
