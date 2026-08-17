@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   RemoteMCPClient,
+  unresolvedLocalRefs,
   type RemoteTransport,
   type RemoteClientLike,
   type RemoteMCPClientOptions,
@@ -46,6 +47,39 @@ function createMockTransportFactory(options?: {
     },
   });
 }
+
+describe("unresolvedLocalRefs", () => {
+  test("returns empty for a ref that resolves locally", () => {
+    const schema = {
+      $defs: { Foo: { type: "object" } },
+      properties: { foo: { $ref: "#/$defs/Foo" } },
+    };
+    expect(unresolvedLocalRefs(schema)).toEqual([]);
+  });
+
+  test("does not misclassify a ref that points *into* a $defs entry", () => {
+    // "#/$defs/Foo/properties/bar" is a valid JSON Pointer into Foo's own
+    // schema, not a reference to a $defs entry literally named
+    // "Foo/properties/bar". Only the first path segment after the prefix
+    // is the actual $defs key.
+    const schema = {
+      $defs: { Foo: { type: "object", properties: { bar: { type: "string" } } } },
+      properties: { foo: { $ref: "#/$defs/Foo/properties/bar" } },
+    };
+    expect(unresolvedLocalRefs(schema)).toEqual([]);
+  });
+
+  test("flags a ref whose $defs key is genuinely missing, nested pointer or not", () => {
+    const schema = {
+      $defs: {},
+      properties: {
+        a: { $ref: "#/$defs/Missing" },
+        b: { $ref: "#/$defs/AlsoMissing/properties/x" },
+      },
+    };
+    expect(unresolvedLocalRefs(schema).sort()).toEqual(["AlsoMissing", "Missing"]);
+  });
+});
 
 describe("RemoteMCPClient", () => {
   describe("constructor", () => {
@@ -320,6 +354,120 @@ describe("RemoteMCPClient", () => {
       await client.listTools();
 
       expect(client.getCachedTools()).toEqual(mockTools);
+    });
+
+    describe("recovery from dangling $ref schema errors", () => {
+      function rawToolsResponse(tools: any[]) {
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      const goodTool = {
+        name: "good_tool",
+        inputSchema: { type: "object", properties: {} },
+        outputSchema: {
+          type: "object",
+          $defs: { Widget: { type: "object" } },
+          properties: { widget: { $ref: "#/$defs/Widget" } },
+        },
+      };
+
+      const brokenTool = {
+        name: "broken_tool",
+        inputSchema: { type: "object", properties: {} },
+        outputSchema: {
+          type: "object",
+          $defs: {},
+          properties: { screen: { $ref: "#/$defs/ScreenInstance" } },
+        },
+      };
+
+      test("drops tools with unresolvable local $refs, keeps the rest", async () => {
+        const warnings: string[] = [];
+        const originalWarn = console.warn;
+        console.warn = (msg: string) => warnings.push(msg);
+
+        const fetchImpl = (async () =>
+          rawToolsResponse([goodTool, brokenTool])) as unknown as typeof fetch;
+
+        const client = new RemoteMCPClient(
+          { name: "stitch", type: "remote", url: "https://example.com/mcp" },
+          {
+            clientFactory: createMockClientFactory({ failListTools: true }),
+            streamableTransportFactory: createMockTransportFactory(),
+            fetchImpl,
+          }
+        );
+
+        // Override the mock client's listTools to throw a schema-shaped error
+        // (createMockClientFactory's failListTools throws a generic message,
+        // so build a targeted client here instead).
+        (client as any).client.listTools = async () => {
+          throw new Error("can't resolve reference #/$defs/ScreenInstance from id #");
+        };
+
+        let tools: any[];
+        try {
+          await client.connect();
+          tools = await client.listTools();
+        } finally {
+          console.warn = originalWarn;
+        }
+
+        expect(tools.map((t) => t.name)).toEqual(["good_tool"]);
+        expect(client.getCachedTools()?.map((t: any) => t.name)).toEqual(["good_tool"]);
+        expect(warnings.some((w) => w.includes("broken_tool"))).toBe(true);
+        expect(warnings.some((w) => w.includes("recovered 1/2"))).toBe(true);
+      });
+
+      test("rethrows non-schema errors without attempting recovery", async () => {
+        let fetchCalled = false;
+        const fetchImpl = (async () => {
+          fetchCalled = true;
+          return rawToolsResponse([goodTool]);
+        }) as unknown as typeof fetch;
+
+        const client = new RemoteMCPClient(
+          { name: "test", type: "remote", url: "https://example.com/mcp" },
+          {
+            clientFactory: createMockClientFactory(),
+            streamableTransportFactory: createMockTransportFactory(),
+            fetchImpl,
+          }
+        );
+
+        (client as any).client.listTools = async () => {
+          throw new Error("401 Unauthorized");
+        };
+
+        await client.connect();
+        await expect(client.listTools()).rejects.toThrow("401 Unauthorized");
+        expect(fetchCalled).toBe(false);
+      });
+
+      test("rethrows original error if every recovered tool is also broken", async () => {
+        const fetchImpl = (async () => rawToolsResponse([brokenTool])) as unknown as typeof fetch;
+
+        const client = new RemoteMCPClient(
+          { name: "test", type: "remote", url: "https://example.com/mcp" },
+          {
+            clientFactory: createMockClientFactory(),
+            streamableTransportFactory: createMockTransportFactory(),
+            fetchImpl,
+          }
+        );
+
+        (client as any).client.listTools = async () => {
+          throw new Error("can't resolve reference #/$defs/ScreenInstance from id #");
+        };
+
+        await client.connect();
+        await expect(client.listTools()).rejects.toThrow(
+          "can't resolve reference #/$defs/ScreenInstance from id #"
+        );
+      });
     });
   });
 
