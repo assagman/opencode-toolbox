@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   RemoteMCPClient,
+  unresolvedLocalRefs,
   type RemoteTransport,
   type RemoteClientLike,
   type RemoteMCPClientOptions,
@@ -46,6 +47,39 @@ function createMockTransportFactory(options?: {
     },
   });
 }
+
+describe("unresolvedLocalRefs", () => {
+  test("returns empty for a ref that resolves locally", () => {
+    const schema = {
+      $defs: { Foo: { type: "object" } },
+      properties: { foo: { $ref: "#/$defs/Foo" } },
+    };
+    expect(unresolvedLocalRefs(schema)).toEqual([]);
+  });
+
+  test("does not misclassify a ref that points *into* a $defs entry", () => {
+    // "#/$defs/Foo/properties/bar" is a valid JSON Pointer into Foo's own
+    // schema, not a reference to a $defs entry literally named
+    // "Foo/properties/bar". Only the first path segment after the prefix
+    // is the actual $defs key.
+    const schema = {
+      $defs: { Foo: { type: "object", properties: { bar: { type: "string" } } } },
+      properties: { foo: { $ref: "#/$defs/Foo/properties/bar" } },
+    };
+    expect(unresolvedLocalRefs(schema)).toEqual([]);
+  });
+
+  test("flags a ref whose $defs key is genuinely missing, nested pointer or not", () => {
+    const schema = {
+      $defs: {},
+      properties: {
+        a: { $ref: "#/$defs/Missing" },
+        b: { $ref: "#/$defs/AlsoMissing/properties/x" },
+      },
+    };
+    expect(unresolvedLocalRefs(schema).sort()).toEqual(["AlsoMissing", "Missing"]);
+  });
+});
 
 describe("RemoteMCPClient", () => {
   describe("constructor", () => {
@@ -374,10 +408,13 @@ describe("RemoteMCPClient", () => {
           throw new Error("can't resolve reference #/$defs/ScreenInstance from id #");
         };
 
-        await client.connect();
-        const tools = await client.listTools();
-
-        console.warn = originalWarn;
+        let tools: any[];
+        try {
+          await client.connect();
+          tools = await client.listTools();
+        } finally {
+          console.warn = originalWarn;
+        }
 
         expect(tools.map((t) => t.name)).toEqual(["good_tool"]);
         expect(client.getCachedTools()?.map((t: any) => t.name)).toEqual(["good_tool"]);

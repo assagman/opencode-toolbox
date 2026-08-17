@@ -80,7 +80,12 @@ export function unresolvedLocalRefs(schema: unknown): string[] {
   const prefix = "#/$defs/";
   for (const ref of refs) {
     if (!ref.startsWith(prefix)) continue;
-    const defName = ref.slice(prefix.length);
+    // A ref may point *into* a $defs entry (e.g. "#/$defs/Foo/properties/bar"),
+    // not just at the entry itself ("#/$defs/Foo"). Only the first path
+    // segment after the prefix is the actual $defs key to check.
+    const rest = ref.slice(prefix.length);
+    const slashIndex = rest.indexOf("/");
+    const defName = slashIndex === -1 ? rest : rest.slice(0, slashIndex);
     if (!localDefs.has(defName)) missing.push(defName);
   }
   return missing;
